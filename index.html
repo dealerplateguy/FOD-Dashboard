@@ -682,12 +682,6 @@ window.parseFile = parseFile;
     #tab-pursuit { padding-bottom: 4px !important; }
     #tab-gppace  { padding-top: 0 !important; }
 
-    /* Page 2: Advisor Scorecard on its own page */
-    #tab-advisors { page-break-before: always; }
-
-    /* Page 3: Leaderboard on its own page */
-    #tab-leaderboard { page-break-before: always; }
-
     /* Panel headers smaller */
     .panel-title { font-size: 14px !important; }
     .panel-sub   { font-size: 9px !important; }
@@ -723,13 +717,18 @@ window.parseFile = parseFile;
     .pm-val { font-size: 10px !important; }
     .pm-goal { font-size: 6px !important; }
 
-    /* Advisor table — fit on one page */
-    #tab-advisors table { font-size: 8px !important; min-width: 0 !important; width: 100% !important; }
-    #tab-advisors thead tr.group-row th { padding: 4px 4px !important; font-size: 7px !important; }
-    #tab-advisors thead tr.sub-row th   { padding: 2px 4px !important; font-size: 6.5px !important; }
-    #tab-advisors tbody td { padding: 3px 4px !important; font-size: 8px !important; }
-    #tab-advisors tbody tr.store-hdr td { padding: 3px 6px !important; font-size: 8px !important; }
-    #tab-advisors tbody tr.store-total td { padding: 3px 4px !important; font-size: 7px !important; }
+    /* Page 2: Advisor Scorecard on its own page — must fit ONE page */
+    #tab-advisors { page-break-before: always; page-break-inside: avoid; }
+    #tab-advisors .panel-header { margin-bottom: 4px !important; padding-bottom: 4px !important; }
+    #tab-advisors table { font-size: 7px !important; min-width: 0 !important; width: 100% !important; border-collapse: collapse !important; }
+    #tab-advisors thead tr.group-row th { padding: 2px 2px !important; font-size: 6px !important; line-height: 1.2 !important; }
+    #tab-advisors thead tr.sub-row th   { padding: 1px 2px !important; font-size: 5.5px !important; }
+    #tab-advisors tbody td { padding: 1.5px 2px !important; font-size: 7px !important; line-height: 1.2 !important; }
+    #tab-advisors tbody tr.store-hdr td { padding: 2px 4px !important; font-size: 7px !important; }
+    #tab-advisors tbody tr.store-total td { padding: 1.5px 2px !important; font-size: 6.5px !important; }
+    #tab-advisors .adv-name { font-size: 7px !important; }
+    #tab-advisors .status-dot { width: 4px !important; height: 4px !important; }
+    #tab-advisors #advisor-mgr-panel { display: none !important; }
 
     /* Page 3: Leaderboard on its own page — portrait */
     #tab-leaderboard { page-break-before: always; page: portrait-page; }
