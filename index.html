@@ -225,38 +225,39 @@ function parseEmail(wb, filename) {
 function parseWIP(wb, filename) {
   const ws = wb.Sheets[wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-  const ROHRMAN = {1712:'honda',1713:'toyota',1714:'kia',1715:'hyundai',1718:'indy'};
+  const ROHRMAN = {1712:'honda',1713:'toyota',1714:'kia',1715:'lafhyundai',1718:'indyhyundai'};
   let updated = 0;
 
-  let currentDealer = null;
-  const buckets = [];
+  // Structure per store:
+  //   Row i:   dealer ID in col0, "CURRENT" in col2 (0-7 days)
+  //   Row i+1: store name in col0 (8-30 days)
+  //   Row i+2: (31-60 days)
+  //   Row i+3: ">" in col2 (>60 days)
+  //   Row i+4: TOTAL row — col5 = total open RO count
+  for (let i = 0; i < rows.length - 4; i++) {
+    const dealerId = Number(rows[i][0]);
+    if (!ROHRMAN[dealerId]) continue;
 
-  rows.forEach(row => {
-    const v0 = Number(row[0]);
-    if (ROHRMAN[v0]) {
-      if (currentDealer && buckets.length >= 3) {
-        const total = buckets.reduce((s,b) => s + (Number(b[5])||0), 0);
-        const over30 = (Number(buckets[2]?.[5])||0) + (Number(buckets[3]?.[5])||0);
-        const store = gpStores.find(s => s.id === ROHRMAN[currentDealer]);
-        if (store) { store.openRo = total; store.over30 = over30; updated++; }
-      }
-      currentDealer = v0;
-      buckets.length = 0;
-    } else if (currentDealer && (String(row[2]).includes('CURRENT') || String(row[1]).includes('-'))) {
-      buckets.push(row);
+    const totalRow = rows[i + 4];
+    const openRo = Number(totalRow[5]) || 0;
+    
+    // Over 30 days = 31-60 bucket + >60 bucket
+    const bucket31_60 = Number(rows[i + 2][5]) || 0;
+    const bucketOver60 = Number(rows[i + 3][5]) || 0;
+    const over30 = bucket31_60 + bucketOver60;
+
+    const store = gpStores.find(s => s.id === ROHRMAN[dealerId]);
+    if (store) {
+      store.openRo = openRo;
+      store.over30 = over30;
+      updated++;
+      upLog('WIP: ' + store.name + ' → ' + openRo + ' open ROs (' + over30 + ' over 30d)', 'ok');
     }
-  });
-  // Last dealer
-  if (currentDealer && buckets.length >= 3) {
-    const total = buckets.reduce((s,b) => s + (Number(b[5])||0), 0);
-    const over30 = (Number(buckets[2]?.[5])||0) + (Number(buckets[3]?.[5])||0);
-    const store = gpStores.find(s => s.id === ROHRMAN[currentDealer]);
-    if (store) { store.openRo = total; store.over30 = over30; updated++; }
   }
 
   renderGPCards(); gpRenderTable();
-  upStatus('wip', `✓ Updated ${updated} stores`, updated > 0 ? 'ok' : 'err');
-  upLog(`WIP: updated ${updated} stores from ${filename}`, updated > 0 ? 'ok' : 'err');
+  upStatus('wip', updated > 0 ? '✓ Updated ' + updated + ' stores' : '⚠ No stores found', updated > 0 ? 'ok' : 'err');
+  upLog('WIP: updated ' + updated + ' stores from ' + filename, updated > 0 ? 'ok' : 'err');
 }
 
 // ── PARSE PURSUIT PDF ──
@@ -337,7 +338,7 @@ function parsePursuit(file) {
         if (allNums.length >= 9) {
           s.gpPct     = allNums[0];
           s.totalYoy  = allNums[1];
-          // col 2 = CP RO Count YoY (skip)
+          s.cpRoYoy   = allNums[2];
           s.cpYoy     = allNums[3];
           s.align     = allNums[4];
           s.valv      = allNums[5];
@@ -824,7 +825,7 @@ window.parseFile = parseFile;
         <thead>
           <tr class="group-row">
             <th class="left">Store</th>
-            <th>Points</th><th>GP%</th><th>Total YoY%</th><th>CP YoY%</th>
+            <th>Points</th><th>GP%</th><th>Total YoY%</th><th>CP RO YoY%</th><th>CP GP YoY%</th>
             <th>Align%</th><th>Valv%</th><th>Tires%</th><th>Policy%</th><th>Op Profit%</th>
           </tr>
         </thead>
@@ -846,7 +847,8 @@ window.parseFile = parseFile;
             <th>Points</th>
             <th>Service GP%</th>
             <th>Total GP YoY</th>
-            <th>CP YoY</th>
+            <th>CP RO YoY</th>
+            <th>CP GP YoY</th>
             <th>Alignment%</th>
             <th>Valvoline%</th>
             <th>Tires%</th>
@@ -1025,14 +1027,14 @@ function switchTab(id, btn) {
 // INFINITE PURSUIT DATA
 // ══════════════════════════════════════════════════════
 const pursuitStores = [
-  { name:'Bob Rohrman Honda',    css:'honda',      points:45,  gpPct:75.26, totalYoy:-0.89, cpYoy:44.58, align:7.53,  valv:40.43, tires:13.83, policy:0.20, opProfit:30.92 },
-  { name:'Bob Rohrman Toyota',   css:'toyota',     points:60,  gpPct:76.78, totalYoy:14.23, cpYoy:5.79,  align:9.00,  valv:30.29, tires:8.53,  policy:0.70, opProfit:24.76 },
-  { name:'Bob Rohrman Kia',      css:'kia',        points:70,  gpPct:75.65, totalYoy:21.26, cpYoy:24.48, align:10.53, valv:30.70, tires:16.40, policy:0.38, opProfit:8.09  },
-  { name:'Bob Rohrman Hyundai',  css:'lafhyundai', points:100, gpPct:77.53, totalYoy:34.40, cpYoy:10.53, align:13.06, valv:26.12, tires:15.56, policy:-0.06,opProfit:17.77 },
-  { name:'Indy Hyundai',         css:'indyhyundai',points:15,  gpPct:77.22, totalYoy:-9.52, cpYoy:-35.43,align:7.66,  valv:13.14, tires:74.57, policy:1.91, opProfit:7.37  },
+  { name:'Bob Rohrman Honda',    css:'honda',      points:45,  gpPct:75.26, totalYoy:-0.89, cpRoYoy:16.12, cpYoy:44.58, align:7.53,  valv:40.43, tires:13.83, policy:0.20, opProfit:30.92 },
+  { name:'Bob Rohrman Toyota',   css:'toyota',     points:60,  gpPct:76.78, totalYoy:14.23, cpRoYoy:27.07, cpYoy:5.79,  align:9.00,  valv:30.29, tires:8.53,  policy:0.70, opProfit:24.76 },
+  { name:'Bob Rohrman Kia',      css:'kia',        points:70,  gpPct:75.65, totalYoy:21.26, cpRoYoy:16.49, cpYoy:24.48, align:10.53, valv:30.70, tires:16.40, policy:0.38, opProfit:8.09  },
+  { name:'Bob Rohrman Hyundai',  css:'lafhyundai', points:100, gpPct:77.53, totalYoy:34.40, cpRoYoy:10.76, cpYoy:10.53, align:13.06, valv:26.12, tires:15.56, policy:-0.06,opProfit:17.77 },
+  { name:'Indy Hyundai',         css:'indyhyundai',points:15,  gpPct:77.22, totalYoy:-9.52, cpRoYoy:5.62,  cpYoy:-35.43,align:7.66,  valv:13.14, tires:74.57, policy:1.91, opProfit:7.37  },
 ];
 
-const STD = { gpPct:75, totalYoy:0, cpYoy:0, align:10, valv:23, tires:15, policy:3, opProfit:8 };
+const STD = { gpPct:75, totalYoy:5, cpRoYoy:5, cpYoy:5, align:10, valv:23, tires:15, policy:1.6, opProfit:8 };
 
 function pursuitChip(val, goal, fmt) {
   // kept for compatibility but replaced inline in renderPursuit
@@ -1055,8 +1057,8 @@ function renderPursuit() {
 
   pursuitStores.forEach(s => {
     const GOAL = 70;
-    const barColor = s.points >= GOAL ? 'var(--green)' : 'var(--red)';
-    const ptColor  = s.points >= GOAL ? 'var(--green)' : 'var(--red)';
+    const barColor = s.points > 30 ? 'var(--green)' : 'var(--red)';
+    const ptColor  = s.points <= 30 ? 'var(--red)' : s.points >= GOAL ? 'var(--green)' : 'var(--text)';
     const fmtPct = (v) => (v > 0 ? '+' : '') + v.toFixed(1) + '%';
     grid.innerHTML += `
       <div class="pursuit-card">
@@ -1068,12 +1070,13 @@ function renderPursuit() {
         </div>
         <div class="pursuit-metrics" style="grid-template-columns:1fr 1fr 1fr">
           <div class="pm-item"><div class="pm-label">GP% <span class="pm-goal">≥75%</span></div><div class="pm-val">${pmVal(s.gpPct.toFixed(1)+'%', s.gpPct, STD.gpPct)}</div></div>
-          <div class="pm-item"><div class="pm-label">Total YoY <span class="pm-goal">≥0%</span></div><div class="pm-val">${pmVal(fmtPct(s.totalYoy), s.totalYoy, STD.totalYoy)}</div></div>
-          <div class="pm-item"><div class="pm-label">CP GP YoY <span class="pm-goal">≥0%</span></div><div class="pm-val">${pmVal(fmtPct(s.cpYoy), s.cpYoy, STD.cpYoy)}</div></div>
+          <div class="pm-item"><div class="pm-label">Total YoY <span class="pm-goal">≥5%</span></div><div class="pm-val">${pmVal(fmtPct(s.totalYoy), s.totalYoy, STD.totalYoy)}</div></div>
+          <div class="pm-item"><div class="pm-label">CP RO YoY <span class="pm-goal">≥5%</span></div><div class="pm-val">${pmVal(fmtPct(s.cpRoYoy), s.cpRoYoy, STD.cpRoYoy)}</div></div>
+          <div class="pm-item"><div class="pm-label">CP GP YoY <span class="pm-goal">≥5%</span></div><div class="pm-val">${pmVal(fmtPct(s.cpYoy), s.cpYoy, STD.cpYoy)}</div></div>
           <div class="pm-item"><div class="pm-label">Alignment <span class="pm-goal">≥10%</span></div><div class="pm-val">${pmVal(s.align.toFixed(1)+'%', s.align, STD.align)}</div></div>
           <div class="pm-item"><div class="pm-label">Valvoline <span class="pm-goal">≥23%</span></div><div class="pm-val">${pmVal(s.valv.toFixed(1)+'%', s.valv, STD.valv)}</div></div>
           <div class="pm-item"><div class="pm-label">Tires <span class="pm-goal">≥15%</span></div><div class="pm-val">${pmVal(s.tires.toFixed(1)+'%', s.tires, STD.tires)}</div></div>
-          <div class="pm-item"><div class="pm-label">Policy <span class="pm-goal">≤1.6%</span></div><div class="pm-val">${pmVal(s.policy.toFixed(2)+'%', s.policy <= 1.6 ? 999 : -1, 0)}</div></div>
+          <div class="pm-item"><div class="pm-label">Policy <span class="pm-goal">≤1.6%</span></div><div class="pm-val">${pmVal(s.policy.toFixed(2)+'%', s.policy <= STD.policy ? 999 : -1, 0)}</div></div>
           <div class="pm-item"><div class="pm-label">Op Profit <span class="pm-goal">≥8%</span></div><div class="pm-val">${pmVal(s.opProfit.toFixed(1)+'%', s.opProfit, STD.opProfit)}</div></div>
         </div>
       </div>`;
@@ -1084,14 +1087,15 @@ function renderPursuit() {
     const rCell = (v, g, fmt) => `<td class="num"><div class="val-wrap">${rDot(v,g)}<span style="color:${v<g?'var(--red)':'var(--text2)'};${v<g?'font-weight:600':''}">${fmt(v)}</span></div></td>`;
     tbody.innerHTML += `<tr>
       <td class="left">${s.name}</td>
-      <td class="num"><strong style="color:${s.points>=70?'var(--green)':'var(--red)'}">${s.points}</strong></td>
+      <td class="num"><strong style="color:${s.points<=30?'var(--red)':s.points>=70?'var(--green)':'var(--text)'}">${s.points}</strong></td>
       ${rCell(s.gpPct,    STD.gpPct,    p)}
-      ${rCell(Math.max(s.totalYoy,0), 0, v=>(s.totalYoy>0?'+':'')+p(s.totalYoy))}
-      ${rCell(Math.max(s.cpYoy,0),    0, v=>(s.cpYoy>0?'+':'')+p(s.cpYoy))}
+      ${rCell(s.totalYoy, STD.totalYoy, v=>(s.totalYoy>0?'+':'')+p(s.totalYoy))}
+      ${rCell(s.cpRoYoy,  STD.cpRoYoy,  v=>(s.cpRoYoy>0?'+':'')+p(s.cpRoYoy))}
+      ${rCell(s.cpYoy,    STD.cpYoy,    v=>(s.cpYoy>0?'+':'')+p(s.cpYoy))}
       ${rCell(s.align,    STD.align,    p)}
       ${rCell(s.valv,     STD.valv,     p)}
       ${rCell(s.tires,    STD.tires,    p)}
-      ${rCell(s.policy>=0?0:99, 0,      v=>p(s.policy))}
+      ${rCell(s.policy <= STD.policy ? 999 : -1, 0, v=>p(s.policy))}
       ${rCell(s.opProfit, STD.opProfit, p)}
     </tr>`;
   });
@@ -1132,11 +1136,27 @@ let gpCurrentCC = 'all';
 function renderGPCards() {
   const grid = document.getElementById('stores-grid');
   grid.innerHTML = '';
+  
+  // Map store IDs to SA advisor keys for open RO aggregation
+  const storeKeyMap = {honda:'honda',toyota:'toyota',kia:'kia',lafhyundai:'hyundai',indyhyundai:'indy'};
+  
   gpStores.forEach(s => {
     const d = gpDir(s.totalYoy);
     const pw = Math.min(Math.abs(s.totalYoy)*3,100);
     const varAmt = s.total - s.lyTotal;
     const varStr = (varAmt>=0?'+':'-')+'$'+Math.abs(Math.round(varAmt)).toLocaleString();
+    
+    // Get open RO count: from WIP upload or sum from SA advisors
+    let openRoCount = s.openRo || 0;
+    let over30Count = s.over30 || 0;
+    if (!openRoCount && typeof getActiveAdvisors === 'function') {
+      const key = storeKeyMap[s.id];
+      const storeAdvisors = getActiveAdvisors().filter(a => a.key === key);
+      openRoCount = storeAdvisors.reduce((sum, a) => sum + (a.openRo || 0), 0);
+    }
+    
+    const openRoHtml = openRoCount ? '<div style="text-align:center;padding:8px 0 4px;border-top:1px solid var(--border);margin-top:6px"><span style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);font-weight:600">Open ROs </span><span style="font-family:\'DM Mono\',monospace;font-size:20px;font-weight:800;color:var(--text)">' + openRoCount + '</span>' + (over30Count ? '<div style="font-size:10px;color:var(--red);font-weight:600;margin-top:2px">' + over30Count + ' over 30 days</div>' : '') + '</div>' : '';
+    
     grid.innerHTML += `
       <div class="store-card ${s.cssClass}">
         <div class="card-store-name"><span class="store-dot dot-${s.cssClass}"></span>${s.name}</div>
@@ -1146,6 +1166,7 @@ function renderGPCards() {
         </div>
         <div class="yoy-badge ${d}">${gpArrow(s.totalYoy)} ${gpPct(s.totalYoy)} YoY</div>
         <div class="pace-bar-track"><div class="pace-bar-fill ${d}" style="width:${pw}%"></div></div>
+        ${openRoHtml}
         <div class="cc-breakdown">${renderGPCC(s)}</div>
       </div>`;
   });
@@ -1456,7 +1477,7 @@ function renderLeaderboard() {
 
   // Update table header
   const labels = { combined:'Combined Service Menu Count', align:'Alignment Count', tire:'Tire Count', valv:'Valvoline Count' };
-  const lbHeader = document.getElementById('lb-table-header'); if (lbHeader) if (lbHeader) lbHeader.textContent = 'Full Rankings · ' + labels[lbMode];
+  const lbHeader = document.getElementById('lb-table-header'); if (lbHeader) lbHeader.textContent = 'Top 10 · ' + labels[lbMode];
 
   // Podium — top 3
   const podium = document.getElementById('lb-podium');
@@ -1486,10 +1507,11 @@ function renderLeaderboard() {
       </div>`;
   });
 
-  // Full table
+  // Full table — top 10 only
   const tbody = document.getElementById('lb-tbody');
   tbody.innerHTML = '';
-  sorted.forEach((a, idx) => {
+  const top10 = sorted.slice(0, 10);
+  top10.forEach((a, idx) => {
     const rank = idx + 1;
     const val  = lbSortKey(a);
     const isTop3 = rank <= 3;
@@ -1502,9 +1524,9 @@ function renderLeaderboard() {
       <td class="left"><span style="font-weight:600;color:var(--text)">${a.name}</span></td>
       <td class="num"><span style="font-size:10px;font-weight:600;color:${sc};background:${sc}15;padding:2px 8px;border-radius:4px">${storeShort[a.store]||a.store}</span></td>
       <td class="num"><strong style="font-size:14px;color:${isTop3?podiumColors[rank-1]:'var(--text)'}">${a.combined}</strong></td>
-      <td class="num" style="color:var(--green);font-weight:${a.alignCnt===Math.max(...sorted.map(x=>x.alignCnt))?'700':'400'}">${a.alignCnt}</td>
-      <td class="num" style="color:var(--accent);font-weight:${a.tireCnt===Math.max(...sorted.map(x=>x.tireCnt))?'700':'400'}">${a.tireCnt}</td>
-      <td class="num" style="color:#7c3aed;font-weight:${a.valvCnt===Math.max(...sorted.map(x=>x.valvCnt))?'700':'400'}">${a.valvCnt}</td>
+      <td class="num" style="color:var(--green);font-weight:${a.alignCnt===Math.max(...top10.map(x=>x.alignCnt))?'700':'400'}">${a.alignCnt}</td>
+      <td class="num" style="color:var(--accent);font-weight:${a.tireCnt===Math.max(...top10.map(x=>x.tireCnt))?'700':'400'}">${a.tireCnt}</td>
+      <td class="num" style="color:#7c3aed;font-weight:${a.valvCnt===Math.max(...top10.map(x=>x.valvCnt))?'700':'400'}">${a.valvCnt}</td>
       <td class="num" style="color:var(--muted)">${a.alignPct.toFixed(1)}%</td>
       <td class="num" style="color:var(--muted)">${a.tirePct.toFixed(1)}%</td>
       <td class="num" style="color:var(--muted)">${a.valvPct.toFixed(1)}%</td>
@@ -1532,6 +1554,7 @@ function buildPursuitEntry() {
       <td style="padding:6px 6px"><input style="${inStyle}" id="pt_pts_${i}"    type="number" value="${s.points}"></td>
       <td style="padding:6px 6px"><input style="${inStyle}" id="pt_gp_${i}"     type="number" step="0.1" value="${s.gpPct}"></td>
       <td style="padding:6px 6px"><input style="${inStyle}" id="pt_tyoy_${i}"   type="number" step="0.1" value="${s.totalYoy}"></td>
+      <td style="padding:6px 6px"><input style="${inStyle}" id="pt_croyoy_${i}" type="number" step="0.1" value="${s.cpRoYoy}"></td>
       <td style="padding:6px 6px"><input style="${inStyle}" id="pt_cyoy_${i}"   type="number" step="0.1" value="${s.cpYoy}"></td>
       <td style="padding:6px 6px"><input style="${inStyle}" id="pt_align_${i}"  type="number" step="0.1" value="${s.align}"></td>
       <td style="padding:6px 6px"><input style="${inStyle}" id="pt_valv_${i}"   type="number" step="0.1" value="${s.valv}"></td>
@@ -1551,15 +1574,16 @@ function togglePursuit() {
 
 function applyPursuit() {
   pursuitStores.forEach((s, i) => {
-    s.points   = parseFloat(document.getElementById(`pt_pts_${i}`).value)  || s.points;
-    s.gpPct    = parseFloat(document.getElementById(`pt_gp_${i}`).value)   || s.gpPct;
-    s.totalYoy = parseFloat(document.getElementById(`pt_tyoy_${i}`).value) ?? s.totalYoy;
-    s.cpYoy    = parseFloat(document.getElementById(`pt_cyoy_${i}`).value) ?? s.cpYoy;
-    s.align    = parseFloat(document.getElementById(`pt_align_${i}`).value)|| s.align;
-    s.valv     = parseFloat(document.getElementById(`pt_valv_${i}`).value) || s.valv;
-    s.tires    = parseFloat(document.getElementById(`pt_tires_${i}`).value)|| s.tires;
-    s.policy   = parseFloat(document.getElementById(`pt_pol_${i}`).value)  ?? s.policy;
-    s.opProfit = parseFloat(document.getElementById(`pt_op_${i}`).value)   ?? s.opProfit;
+    s.points   = parseFloat(document.getElementById('pt_pts_' + i).value)    || s.points;
+    s.gpPct    = parseFloat(document.getElementById('pt_gp_' + i).value)     || s.gpPct;
+    s.totalYoy = parseFloat(document.getElementById('pt_tyoy_' + i).value)   ?? s.totalYoy;
+    s.cpRoYoy  = parseFloat(document.getElementById('pt_croyoy_' + i).value) ?? s.cpRoYoy;
+    s.cpYoy    = parseFloat(document.getElementById('pt_cyoy_' + i).value)   ?? s.cpYoy;
+    s.align    = parseFloat(document.getElementById('pt_align_' + i).value)  || s.align;
+    s.valv     = parseFloat(document.getElementById('pt_valv_' + i).value)   || s.valv;
+    s.tires    = parseFloat(document.getElementById('pt_tires_' + i).value)  || s.tires;
+    s.policy   = parseFloat(document.getElementById('pt_pol_' + i).value)    ?? s.policy;
+    s.opProfit = parseFloat(document.getElementById('pt_op_' + i).value)     ?? s.opProfit;
   });
   renderPursuit();
   document.getElementById('pursuit-entry-panel').style.display = 'none';
@@ -1675,7 +1699,7 @@ window.addEventListener('DOMContentLoaded', initDashboard);
 
   <!-- Full rankings table -->
   <div class="summary-card">
-    <div class="summary-card-header" id="lb-table-header">Full Rankings · Combined Service Menu Count</div>
+    <div class="summary-card-header" id="lb-table-header">Top 10 · Combined Service Menu Count</div>
     <div class="table-scroll">
       <table>
         <thead>
