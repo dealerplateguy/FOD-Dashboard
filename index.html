@@ -427,12 +427,73 @@ function parseTech(wb, filename) {
   upLog(`Tech: updated ${updated} advisors from ${filename}`, 'ok');
 }
 
+// ── PARSE WIP DETAIL (per-advisor open ROs) ──
+function parseWIPDetail(fileList) {
+  if (!fileList || fileList.length === 0) return;
+  if (typeof XLSX === 'undefined') { upLog('SheetJS not loaded', 'err'); return; }
+  
+  const openRoCounts = {}; // advisor name → count of unique ROs
+  let filesProcessed = 0;
+  
+  Array.from(fileList).forEach(file => {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        const wb = XLSX.read(e.target.result, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+        
+        // Col 15 = advisor name, Col 5 = RO number
+        // Skip header row, count unique ROs per advisor
+        const advisorROs = {};
+        rows.slice(1).forEach(row => {
+          const advisor = String(row[15] || '').trim().toUpperCase();
+          const roNum = row[5];
+          if (!advisor || advisor === 'ADVISOR' || !roNum) return;
+          if (!advisorROs[advisor]) advisorROs[advisor] = new Set();
+          advisorROs[advisor].add(roNum);
+        });
+        
+        Object.entries(advisorROs).forEach(([name, roSet]) => {
+          openRoCounts[name] = (openRoCounts[name] || 0) + roSet.size;
+        });
+        
+        upLog('WIP Detail: parsed ' + file.name + ' — ' + Object.keys(advisorROs).length + ' advisors', 'ok');
+      } catch(err) {
+        upLog('WIP Detail error (' + file.name + '): ' + err.message, 'err');
+      }
+      
+      filesProcessed++;
+      if (filesProcessed === fileList.length) {
+        // All files processed — update saAdvisors
+        let updated = 0;
+        saAdvisors.forEach(a => {
+          const key = a.name.toUpperCase();
+          if (openRoCounts[key] !== undefined) {
+            a.openRo = openRoCounts[key];
+            updated++;
+          }
+        });
+        saRenderTable();
+        renderLeaderboard();
+        const statusEl = document.getElementById('up-wipdetail-status');
+        if (statusEl) { statusEl.textContent = '✓ Updated ' + updated + ' advisors'; statusEl.style.color = '#0f9b58'; }
+        upLog('WIP Detail: updated open ROs for ' + updated + ' advisors from ' + fileList.length + ' files', 'ok');
+        // Also update store-level open ROs on GP cards
+        renderGPCards();
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+
 // Expose parse functions globally so the second script block can call them
 window.parseGP = parseGP;
 window.parseSA = parseSA;
 window.parseEmail = parseEmail;
 window.parseWIP = parseWIP;
 window.parseTech = parseTech;
+window.parseWIPDetail = parseWIPDetail;
 window.parsePursuit = parsePursuit;
 window.parseFile = parseFile;
 
@@ -1266,24 +1327,24 @@ const saAdvisors = [
   { store:'Bob Rohrman Honda',    key:'honda',   name:'KAYLA MERKEL',         ro:133, disc:1799, rap:2.15, elr:153, alignPct:9.8,  alignCnt:10, tirePct:7.8,  tireCnt:8,  valvPct:49.0, valvCnt:50, email:83.5, vidSent:11.0, vidViewed:28.6, onlinePay:3.9, openRo:13},
   { store:'Bob Rohrman Honda',    key:'honda',   name:'ALEXANDRIA ARTEMIS',   ro:132, disc:1992, rap:1.83, elr:150, alignPct:7.6,  alignCnt:8,  tirePct:5.7,  tireCnt:6,  valvPct:41.0, valvCnt:43, email:87.1, vidSent:7.8,  vidViewed:20.0, onlinePay:8.6, openRo:14},
   { store:'Bob Rohrman Honda',    key:'honda',   name:'BRIAN STELLWAG',       ro:79,  disc:596,  rap:1.87, elr:155, alignPct:6.5,  alignCnt:4,  tirePct:6.5,  tireCnt:4,  valvPct:50.0, valvCnt:31, email:82.2, vidSent:3.9,  vidViewed:33.3, onlinePay:2.6, openRo:7},
-  { store:'Bob Rohrman Honda',    key:'honda',   name:'ANTHONY RAMIREZ',      ro:136, disc:1411, rap:1.25, elr:144, alignPct:2.8,  alignCnt:3,  tirePct:5.6,  tireCnt:6,  valvPct:22.2, valvCnt:24, email:70.0, vidSent:11.3, vidViewed:33.3, onlinePay:0.8, openRo:9},
+  { store:'Bob Rohrman Honda',    key:'honda',   name:'ANTHONY RAMIREZ',      ro:136, disc:1411, rap:1.25, elr:144, alignPct:2.8,  alignCnt:3,  tirePct:5.6,  tireCnt:6,  valvPct:22.2, valvCnt:24, email:70.0, vidSent:11.3, vidViewed:33.3, onlinePay:0.8, openRo:10},
   { store:'Bob Rohrman Honda',    key:'honda',   name:'XION OBOMSAWIN',       ro:104, disc:197,  rap:1.22, elr:129, alignPct:13.3, alignCnt:10, tirePct:8.0,  tireCnt:6,  valvPct:46.7, valvCnt:35, email:82.6, vidSent:11.9, vidViewed:25.0, onlinePay:0.0, openRo:4},
   { store:'Bob Rohrman Toyota',   key:'toyota',  name:'OLIVER LOPEZ-MAYORGA', ro:204, disc:1324, rap:1.09, elr:141, alignPct:4.8,  alignCnt:8,  tirePct:4.8,  tireCnt:8,  valvPct:32.7, valvCnt:55, email:89.8, vidSent:52.5, vidViewed:21.1, onlinePay:2.2, openRo:9},
-  { store:'Bob Rohrman Toyota',   key:'toyota',  name:'Adam Kulaga',           ro:168, disc:2421, rap:1.45, elr:144, alignPct:12.2, alignCnt:16, tirePct:3.8,  tireCnt:5,  valvPct:40.5, valvCnt:53, email:75.8, vidSent:62.1, vidViewed:23.2, onlinePay:5.2, openRo:7},
+  { store:'Bob Rohrman Toyota',   key:'toyota',  name:'Adam Kulaga',           ro:168, disc:2421, rap:1.45, elr:144, alignPct:12.2, alignCnt:16, tirePct:3.8,  tireCnt:5,  valvPct:40.5, valvCnt:53, email:75.8, vidSent:62.1, vidViewed:23.2, onlinePay:5.2, openRo:8},
   { store:'Bob Rohrman Toyota',   key:'toyota',  name:'MATTHEW LENARDO',      ro:144, disc:1082, rap:1.66, elr:156, alignPct:8.5,  alignCnt:9,  tirePct:7.5,  tireCnt:8,  valvPct:26.4, valvCnt:28, email:79.2, vidSent:57.4, vidViewed:20.3, onlinePay:2.3, openRo:11},
   { store:'Bob Rohrman Toyota',   key:'toyota',  name:'MAX TERRY',             ro:162, disc:761,  rap:1.41, elr:153, alignPct:7.4,  alignCnt:9,  tirePct:5.0,  tireCnt:6,  valvPct:24.0, valvCnt:29, email:85.3, vidSent:58.9, vidViewed:19.3, onlinePay:1.4, openRo:16},
   { store:'Bob Rohrman Toyota',   key:'toyota',  name:'BRITTANY GERBER',      ro:150, disc:1387, rap:1.29, elr:148, alignPct:11.4, alignCnt:13, tirePct:3.5,  tireCnt:4,  valvPct:27.2, valvCnt:31, email:83.3, vidSent:63.8, vidViewed:24.4, onlinePay:0.7, openRo:7},
   { store:'Bob Rohrman Toyota',   key:'toyota',  name:'Rebeca Alvarado',      ro:101, disc:0,    rap:0.37, elr:127, alignPct:0.0,  alignCnt:0,  tirePct:0.0,  tireCnt:0,  valvPct:0.0,  valvCnt:0,  email:89.6, vidSent:73.0, vidViewed:28.8, onlinePay:0.0, openRo:0},
   { store:'Bob Rohrman Toyota',   key:'toyota',  name:'JACOB LINSON',         ro:69,  disc:715,  rap:1.47, elr:144, alignPct:13.6, alignCnt:8,  tirePct:1.7,  tireCnt:1,  valvPct:30.5, valvCnt:18, email:81.8, vidSent:64.1, vidViewed:14.6, onlinePay:0.0, openRo:6},
   { store:'Bob Rohrman Kia',      key:'kia',     name:'PHILIP DOVOLIS',       ro:157, disc:1645, rap:1.79, elr:140, alignPct:18.1, alignCnt:21, tirePct:7.8,  tireCnt:9,  valvPct:58.6, valvCnt:68, email:81.4, vidSent:17.9, vidViewed:28.0, onlinePay:3.6, openRo:19},
-  { store:'Bob Rohrman Kia',      key:'kia',     name:'EVAN HANTHORNE',       ro:136, disc:994,  rap:1.10, elr:149, alignPct:6.4,  alignCnt:7,  tirePct:0.9,  tireCnt:1,  valvPct:14.7, valvCnt:16, email:88.0, vidSent:21.1, vidViewed:7.1,  onlinePay:1.5, openRo:26},
-  { store:'Bob Rohrman Kia',      key:'kia',     name:'JOSH LINDSTROM',       ro:119, disc:706,  rap:1.05, elr:139, alignPct:5.6,  alignCnt:5,  tirePct:2.2,  tireCnt:2,  valvPct:17.8, valvCnt:16, email:77.2, vidSent:19.3, vidViewed:22.7, onlinePay:1.8, openRo:30},
+  { store:'Bob Rohrman Kia',      key:'kia',     name:'EVAN HANTHORNE',       ro:136, disc:994,  rap:1.10, elr:149, alignPct:6.4,  alignCnt:7,  tirePct:0.9,  tireCnt:1,  valvPct:14.7, valvCnt:16, email:88.0, vidSent:21.1, vidViewed:7.1,  onlinePay:1.5, openRo:29},
+  { store:'Bob Rohrman Kia',      key:'kia',     name:'JOSH LINDSTROM',       ro:119, disc:706,  rap:1.05, elr:139, alignPct:5.6,  alignCnt:5,  tirePct:2.2,  tireCnt:2,  valvPct:17.8, valvCnt:16, email:77.2, vidSent:19.3, vidViewed:22.7, onlinePay:1.8, openRo:34},
   { store:'Bob Rohrman Hyundai',  key:'hyundai', name:'JORDAN TROXEL',        ro:173, disc:688,  rap:1.41, elr:157, alignPct:22.9, alignCnt:22, tirePct:20.8, tireCnt:20, valvPct:28.1, valvCnt:27, email:87.4, vidSent:73.9, vidViewed:25.7, onlinePay:5.6, openRo:10},
   { store:'Bob Rohrman Hyundai',  key:'hyundai', name:'DAVID RILEY',          ro:156, disc:153,  rap:1.25, elr:157, alignPct:6.7,  alignCnt:6,  tirePct:3.4,  tireCnt:3,  valvPct:29.2, valvCnt:26, email:86.6, vidSent:69.3, vidViewed:26.1, onlinePay:2.4, openRo:9},
-  { store:'Bob Rohrman Hyundai',  key:'hyundai', name:'NEVEN CHASTEEN',       ro:118, disc:175,  rap:1.69, elr:157, alignPct:5.7,  alignCnt:3,  tirePct:7.5,  tireCnt:4,  valvPct:18.9, valvCnt:10, email:89.2, vidSent:59.1, vidViewed:7.7,  onlinePay:6.8, openRo:9},
-  { store:'Indy Hyundai',         key:'indy',    name:'ERICK CONKLIN',        ro:148, disc:354,  rap:1.26, elr:149, alignPct:14.0, alignCnt:14, tirePct:48.0, tireCnt:48, valvPct:17.0, valvCnt:17, email:92.6, vidSent:0.0,  vidViewed:0.0,  onlinePay:5.0, openRo:31},
-  { store:'Indy Hyundai',         key:'indy',    name:'Benjamin Cucio',       ro:191, disc:40,   rap:0.97, elr:117, alignPct:4.3,  alignCnt:3,  tirePct:37.7, tireCnt:26, valvPct:21.7, valvCnt:15, email:94.8, vidSent:0.0,  vidViewed:0.0,  onlinePay:4.4, openRo:29},
-  { store:'Indy Hyundai',         key:'indy',    name:'NOAH WEAVER',          ro:68,  disc:39,   rap:0.91, elr:134, alignPct:10.0, alignCnt:4,  tirePct:20.0, tireCnt:8,  valvPct:10.0, valvCnt:4,  email:89.6, vidSent:0.0,  vidViewed:0.0,  onlinePay:0.0, openRo:46},
+  { store:'Bob Rohrman Hyundai',  key:'hyundai', name:'NEVEN CHASTEEN',       ro:118, disc:175,  rap:1.69, elr:157, alignPct:5.7,  alignCnt:3,  tirePct:7.5,  tireCnt:4,  valvPct:18.9, valvCnt:10, email:89.2, vidSent:59.1, vidViewed:7.7,  onlinePay:6.8, openRo:10},
+  { store:'Indy Hyundai',         key:'indy',    name:'ERICK CONKLIN',        ro:148, disc:354,  rap:1.26, elr:149, alignPct:14.0, alignCnt:14, tirePct:48.0, tireCnt:48, valvPct:17.0, valvCnt:17, email:92.6, vidSent:0.0,  vidViewed:0.0,  onlinePay:5.0, openRo:32},
+  { store:'Indy Hyundai',         key:'indy',    name:'Benjamin Cucio',       ro:191, disc:40,   rap:0.97, elr:117, alignPct:4.3,  alignCnt:3,  tirePct:37.7, tireCnt:26, valvPct:21.7, valvCnt:15, email:94.8, vidSent:0.0,  vidViewed:0.0,  onlinePay:4.4, openRo:30},
+  { store:'Indy Hyundai',         key:'indy',    name:'NOAH WEAVER',          ro:68,  disc:39,   rap:0.91, elr:134, alignPct:10.0, alignCnt:4,  tirePct:20.0, tireCnt:8,  valvPct:10.0, valvCnt:4,  email:89.6, vidSent:0.0,  vidViewed:0.0,  onlinePay:0.0, openRo:50},
 ];
 
 const SA_B = { ro:170, rap:1.5, align:10, tire:15, valv:23, email:90, vidSent:75, vidViewed:25 };
@@ -1575,9 +1636,9 @@ function renderLeaderboard() {
       <td style="text-align:center;font-size:${isTop3?'16px':'12px'};font-weight:700;color:var(--text2)">${rankDisplay}</td>
       <td style="text-align:left"><span style="font-weight:600;color:var(--text)">${a.name}</span></td>
       <td style="text-align:center"><span style="font-size:10px;font-weight:600;color:${sc};background:${sc}15;padding:2px 8px;border-radius:4px">${storeShort[a.store]||a.store}</span></td>
+      <td style="text-align:center;font-weight:800;font-size:14px;color:${psColor};background:#1e293b0a;border-radius:4px">${a.powerScore}</td>
       <td style="text-align:center;font-weight:600">${a.ro}</td>
       <td style="text-align:center;font-weight:700;color:${(a.openRo||0)>20?'var(--red)':(a.openRo||0)>10?'var(--text)':'var(--green)'}">${a.openRo||0}</td>
-      <td style="text-align:center;font-weight:800;font-size:14px;color:${psColor};background:#1e293b0a;border-radius:4px">${a.powerScore}</td>
       <td style="text-align:center;font-weight:600">${cpH}</td>
       <td style="text-align:center;font-weight:600">${wH}</td>
       <td style="text-align:center;font-weight:600">${a.rap.toFixed(2)}</td>
@@ -1762,9 +1823,9 @@ window.addEventListener('DOMContentLoaded', initDashboard);
             <th style="width:44px;text-align:center">Rank</th>
             <th style="text-align:left">Advisor</th>
             <th>Store</th>
+            <th style="background:#1e293b;color:#fff;border-radius:4px">Power<br>Score</th>
             <th>ROs</th>
             <th style="color:var(--red)">Open<br>ROs</th>
-            <th style="background:#1e293b;color:#fff;border-radius:4px">Power<br>Score</th>
             <th>CP<br>Hrs</th>
             <th>Warr<br>Hrs</th>
             <th>Hrs/RO</th>
@@ -1862,6 +1923,15 @@ window.addEventListener('DOMContentLoaded', initDashboard);
       <label class="up-label" for="up-tech">Choose File</label>
       <input class="up-input" type="file" id="up-tech" accept=".xlsx,.xls" onchange="upHandle(this.files[0],'tech')">
       <div class="up-status" id="up-tech-status"></div>
+    </div>
+
+    <div class="up-card">
+      <div class="up-icon">📋</div>
+      <div class="up-title">WIP Advisor Detail</div>
+      <div class="up-hint">Select all 5 store files at once</div>
+      <label class="up-label" for="up-wipdetail">Choose Files</label>
+      <input class="up-input" type="file" id="up-wipdetail" accept=".xlsx,.xls" multiple onchange="parseWIPDetail(this.files)">
+      <div class="up-status" id="up-wipdetail-status"></div>
     </div>
 
   </div>
