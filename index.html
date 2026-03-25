@@ -6,6 +6,7 @@
 <title>Fixed Ops Director Dashboard — Rohrman</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>
 // ══════════════════════════════════════════════════════
 // UPLOAD & PARSE
@@ -264,22 +265,44 @@ const PURSUIT_STORE_MAP = {
 };
 
 function parsePursuit(file) {
-  // Read as text using FileReader — PDFs from this report have extractable text
+  if (typeof pdfjsLib === 'undefined') {
+    upLog('pdf.js not loaded — cannot parse PDF', 'err');
+    upStatus('pursuit', '✗ pdf.js not loaded', 'err');
+    return;
+  }
+  pdfjsLib.GlobalWorkerOptions.workerSrc = '';
+
   const reader = new FileReader();
-  reader.onload = function(e) {
+  reader.onload = async function(e) {
     try {
-      const bytes = new Uint8Array(e.target.result);
-      // Extract text using a simple byte scan for readable ASCII lines
-      let text = '';
-      for (let i = 0; i < bytes.length; i++) {
-        const c = bytes[i];
-        if (c >= 32 && c < 127) text += String.fromCharCode(c);
-        else if (c === 10 || c === 13) text += '\n';
-      }
+      const typedArray = new Uint8Array(e.target.result);
+      const pdf = await pdfjsLib.getDocument({ data: typedArray, disableWorker: true }).promise;
+      upLog('Pursuit PDF loaded — ' + pdf.numPages + ' page(s)', 'ok');
 
-      const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 10);
+      // Extract text from page 1 (monthly data)
+      const page = await pdf.getPage(1);
+      const textContent = await page.getTextContent();
+
+      // Group text items into rows by Y position
+      const yBuckets = {};
+      textContent.items.forEach(item => {
+        const y = Math.round(item.transform[5]); // Y position
+        if (!yBuckets[y]) yBuckets[y] = [];
+        yBuckets[y].push({ x: item.transform[4], text: item.str.trim() });
+      });
+
+      // Sort each row by X, join into single line strings
+      const lines = Object.keys(yBuckets)
+        .sort((a, b) => Number(b) - Number(a)) // top to bottom
+        .map(y => {
+          const items = yBuckets[y].sort((a, b) => a.x - b.x);
+          return items.map(i => i.text).join(' ');
+        })
+        .filter(l => l.length > 10);
+
+      upLog('Pursuit: extracted ' + lines.length + ' text lines', 'info');
+
       let updated = 0;
-
       lines.forEach(line => {
         const lower = line.toLowerCase();
         let storeIdx = -1;
@@ -288,28 +311,28 @@ function parsePursuit(file) {
         }
         if (storeIdx < 0) return;
 
-        // Extract all numbers from the line
+        // Extract all numbers (percentages and integers)
         const nums = line.match(/-?\d+\.\d+%?|-?\d+%?/g);
-        if (!nums || nums.length < 10) return;
+        if (!nums || nums.length < 10) {
+          upLog('Pursuit: ' + pursuitStores[storeIdx].name + ' — only ' + (nums ? nums.length : 0) + ' numbers found, skipping', 'err');
+          return;
+        }
 
-        const pct = v => parseFloat(String(v).replace('%',''));
-        const s = pursuitStores[storeIdx];
-        // Try to find the SERVICE POINTS value (integer, 0-100)
-        // It appears after the 9 metric columns
-        const allNums = nums.map(n => parseFloat(String(n).replace('%','')));
+        const allNums = nums.map(n => parseFloat(String(n).replace('%', '')));
 
-        // Find points: look for a clean integer between 0-100 after at least 9 numbers
+        // Find SERVICE POINTS: first clean integer 0-100 after the 9 metric columns
         let pointsVal = null;
-        for (let j = 8; j < allNums.length; j++) {
+        for (let j = 9; j < allNums.length; j++) {
           if (Number.isInteger(allNums[j]) && allNums[j] >= 0 && allNums[j] <= 100) {
             pointsVal = allNums[j]; break;
           }
         }
 
+        const s = pursuitStores[storeIdx];
         if (allNums.length >= 9) {
           s.gpPct     = allNums[0];
           s.totalYoy  = allNums[1];
-          // skip cpRoYoy (col 2)
+          // col 2 = CP RO Count YoY (skip)
           s.cpYoy     = allNums[3];
           s.align     = allNums[4];
           s.valv      = allNums[5];
@@ -318,19 +341,18 @@ function parsePursuit(file) {
           s.opProfit  = allNums[8];
           if (pointsVal !== null) s.points = pointsVal;
           updated++;
+          upLog('Pursuit: ✓ ' + s.name + ' → GP=' + s.gpPct + '% YoY=' + s.totalYoy + '% Pts=' + s.points, 'ok');
         }
       });
 
       if (updated > 0) {
         renderPursuit();
         buildPursuitEntry();
-        upStatus('pursuit', `✓ Updated ${updated} stores`, 'ok');
-        upLog(`Pursuit: updated ${updated} stores from ${file.name}`, 'ok');
+        upStatus('pursuit', '✓ Updated ' + updated + ' stores', 'ok');
+        upLog('Pursuit: updated ' + updated + ' stores from ' + file.name, 'ok');
       } else {
-        // Fallback: show manual entry panel with instructions
         upStatus('pursuit', '⚠ Auto-parse limited — use manual entry panel on Infinite Pursuit tab', 'err');
-        upLog(`Pursuit: PDF text extraction limited for ${file.name} — use the manual entry panel`, 'err');
-        // Switch to pursuit tab and open entry panel
+        upLog('Pursuit: no matching store rows found — use manual entry panel', 'err');
         document.querySelectorAll('.tab-btn').forEach(b => { if (b.textContent.includes('Infinite')) b.click(); });
         const p = document.getElementById('pursuit-entry-panel');
         if (p) { p.style.display = 'block'; document.getElementById('pursuit-toggle-icon').textContent = 'COLLAPSE ▲'; }
