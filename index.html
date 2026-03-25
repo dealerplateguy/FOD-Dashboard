@@ -44,16 +44,16 @@ function setZoneStatus(zoneId, msg, type) {
   status.textContent = msg;
 }
 
-function dzDrag(e, id) { e.preventDefault(); document.getElementById(id).classList.add('drag-over'); }
-function dzLeave(id) { document.getElementById(id).classList.remove('drag-over'); }
-function dzDrop(e, type) {
+window.dzDrag = function(e, id) { e.preventDefault(); document.getElementById(id).classList.add('drag-over'); }
+window.dzLeave = function(id) { document.getElementById(id).classList.remove('drag-over'); }
+window.dzDrop = function(e, type) {
   e.preventDefault();
   const id = 'dz-' + (type === 'gp' ? 'gp' : type === 'sa' ? 'sa' : type === 'email' ? 'email' : type === 'wip' ? 'wip' : type === 'pursuit' ? 'pursuit' : 'tech');
   dzLeave(id);
   const file = e.dataTransfer.files[0];
   if (file) parseFile(file, type);
 }
-function dzFile(e, type) {
+window.dzFile = function(e, type) {
   const file = e.target.files[0];
   if (file) parseFile(file, type);
 }
@@ -1422,22 +1422,21 @@ function initDashboard() {
   });
 }
 
-window.addEventListener('DOMContentLoaded', function() {
-  // Wire file inputs — done here so dzFile is guaranteed to exist
-  var fileMap = [
-    ['fi-gp',      'gp'],
-    ['fi-sa',      'sa'],
-    ['fi-email',   'email'],
-    ['fi-pursuit', 'pursuit'],
-    ['fi-wip',     'wip'],
-    ['fi-tech',    'tech']
-  ];
-  fileMap.forEach(function(pair) {
-    var el = document.getElementById(pair[0]);
-    if (el) el.addEventListener('change', function(e) { dzFile(e, pair[1]); });
-  });
-  initDashboard();
-});
+// Expose functions needed by inline handlers
+window.dzFile  = window.dzFile || dzFile;
+window.dzDrag  = function(e,id){ e.preventDefault(); var el=document.getElementById(id); if(el) el.classList.add('drag-over'); };
+window.dzLeave = function(id){ var el=document.getElementById(id); if(el) el.classList.remove('drag-over'); };
+window.dzDrop  = function(e,type){ e.preventDefault(); var id='dz-'+(type==='gp'?'gp':type==='sa'?'sa':type==='email'?'email':type==='wip'?'wip':type==='pursuit'?'pursuit':'tech'); window.dzLeave(id); var f=e.dataTransfer.files[0]; if(f) parseFile(f,type); };
+window.switchTab    = switchTab;
+window.setCC        = setCC;
+window.filterStore  = filterStore;
+window.lbFilter     = lbFilter;
+window.toggleEntry  = toggleEntry;
+window.applyEntries = applyEntries;
+window.togglePursuit = togglePursuit;
+window.applyPursuit  = applyPursuit;
+
+window.addEventListener('DOMContentLoaded', initDashboard);
 </script>
 
 <!-- ══ TAB: LEADERBOARD ══ -->
@@ -1512,7 +1511,7 @@ window.addEventListener('DOMContentLoaded', function() {
       <div class="drop-filename">TOTAL_GROUP_GROSS_REVIEW.xlsx</div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:12px">Updates GP Pace projected & LY totals</div>
       <label for="fi-gp" style="display:inline-block;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Choose File</label>
-      <input type="file" id="fi-gp" accept=".xlsx,.xls" style="display:none">
+      <input type="file" id="fi-gp" onchange="window.dzFile(event,'gp')" accept=".xlsx,.xls" style="display:none">
       <div class="drop-status" id="dz-gp-status"></div>
     </div>
 
@@ -1523,7 +1522,7 @@ window.addEventListener('DOMContentLoaded', function() {
       <div class="drop-filename">TOTAL_SA_TOTALS_*.xlsx</div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:12px">Updates advisor scorecard & leaderboard</div>
       <label for="fi-sa" style="display:inline-block;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Choose File</label>
-      <input type="file" id="fi-sa" accept=".xlsx,.xls" style="display:none">
+      <input type="file" id="fi-sa" onchange="window.dzFile(event,'sa')" accept=".xlsx,.xls" style="display:none">
       <div class="drop-status" id="dz-sa-status"></div>
     </div>
 
@@ -1534,7 +1533,7 @@ window.addEventListener('DOMContentLoaded', function() {
       <div class="drop-filename">Customer_Email_List.xlsx</div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:12px">Updates email capture % per advisor</div>
       <label for="fi-email" style="display:inline-block;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Choose File</label>
-      <input type="file" id="fi-email" accept=".xlsx,.xls" style="display:none">
+      <input type="file" id="fi-email" onchange="window.dzFile(event,'email')" accept=".xlsx,.xls" style="display:none">
       <div class="drop-status" id="dz-email-status"></div>
     </div>
 
@@ -1545,7 +1544,7 @@ window.addEventListener('DOMContentLoaded', function() {
       <div class="drop-filename">2026_ESTIMATED_PURSUIT_*.pdf</div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:12px">Updates pursuit points & all metrics</div>
       <label for="fi-pursuit" style="display:inline-block;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Choose File</label>
-      <input type="file" id="fi-pursuit" accept=".pdf" style="display:none">
+      <input type="file" id="fi-pursuit" onchange="window.dzFile(event,'pursuit')" accept=".pdf" style="display:none">
       <div class="drop-status" id="dz-pursuit-status"></div>
     </div>
 
@@ -1556,7 +1555,7 @@ window.addEventListener('DOMContentLoaded', function() {
       <div class="drop-filename">WORK_IN_PROCESS_*.xlsx</div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:12px">Updates Open ROs & Over 30 per store</div>
       <label for="fi-wip" style="display:inline-block;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Choose File</label>
-      <input type="file" id="fi-wip" accept=".xlsx,.xls" style="display:none">
+      <input type="file" id="fi-wip" onchange="window.dzFile(event,'wip')" accept=".xlsx,.xls" style="display:none">
       <div class="drop-status" id="dz-wip-status"></div>
     </div>
 
@@ -1567,7 +1566,7 @@ window.addEventListener('DOMContentLoaded', function() {
       <div class="drop-filename">ADVISOR_TECHNOLOGY.xlsx</div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:12px">Updates video sent/viewed & online pay %</div>
       <label for="fi-tech" style="display:inline-block;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Choose File</label>
-      <input type="file" id="fi-tech" accept=".xlsx,.xls" style="display:none">
+      <input type="file" id="fi-tech" onchange="window.dzFile(event,'tech')" accept=".xlsx,.xls" style="display:none">
       <div class="drop-status" id="dz-tech-status"></div>
     </div>
 
