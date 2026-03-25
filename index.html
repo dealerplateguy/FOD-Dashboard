@@ -1422,7 +1422,22 @@ function initDashboard() {
   });
 }
 
-window.addEventListener('DOMContentLoaded', initDashboard);
+window.addEventListener('DOMContentLoaded', function() {
+  // Wire file inputs — done here so dzFile is guaranteed to exist
+  var fileMap = [
+    ['fi-gp',      'gp'],
+    ['fi-sa',      'sa'],
+    ['fi-email',   'email'],
+    ['fi-pursuit', 'pursuit'],
+    ['fi-wip',     'wip'],
+    ['fi-tech',    'tech']
+  ];
+  fileMap.forEach(function(pair) {
+    var el = document.getElementById(pair[0]);
+    if (el) el.addEventListener('change', function(e) { dzFile(e, pair[1]); });
+  });
+  initDashboard();
+});
 </script>
 
 <!-- ══ TAB: LEADERBOARD ══ -->
