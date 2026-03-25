@@ -1488,8 +1488,8 @@ function renderLeaderboard() {
   
   // ── POWER SCORE CALCULATION ──
   // Percentile-based composite score (0-100)
-  // Weights: CP Hrs 30%, Hrs/RO 20%, Combined Menu 20%, Warr Hrs 10%, Align% 7%, Tire% 7%, Valv% 6%
-  const weights = { cpHrs:0.30, rap:0.20, combined:0.20, warrHrs:0.10, alignPct:0.07, tirePct:0.07, valvPct:0.06 };
+  // Weights: CP Hrs 25%, RO Count 15%, Hrs/RO 15%, Combined Menu 15%, Warr Hrs 10%, Align% 7%, Tire% 7%, Valv% 6%
+  const weights = { cpHrs:0.25, ro:0.15, rap:0.15, combined:0.15, warrHrs:0.10, alignPct:0.07, tirePct:0.07, valvPct:0.06 };
   const metrics = Object.keys(weights);
   
   // Compute percentile rank for each metric
@@ -1499,7 +1499,7 @@ function renderLeaderboard() {
     return (below / (arr.length - 1)) * 100;
   }
   
-  const metricArrays = {};
+  let metricArrays = {};
   metrics.forEach(m => {
     metricArrays[m] = lbAdvisors.map(a => m === 'combined' ? a.combined : (a[m] || 0));
   });
@@ -1571,6 +1571,7 @@ function renderLeaderboard() {
       <td style="text-align:center;font-size:${isTop3?'16px':'12px'};font-weight:700;color:var(--text2)">${rankDisplay}</td>
       <td style="text-align:left"><span style="font-weight:600;color:var(--text)">${a.name}</span></td>
       <td style="text-align:center"><span style="font-size:10px;font-weight:600;color:${sc};background:${sc}15;padding:2px 8px;border-radius:4px">${storeShort[a.store]||a.store}</span></td>
+      <td style="text-align:center;font-weight:600">${a.ro}</td>
       <td style="text-align:center;font-weight:800;font-size:14px;color:${psColor};background:#1e293b0a;border-radius:4px">${a.powerScore}</td>
       <td style="text-align:center;font-weight:600">${cpH}</td>
       <td style="text-align:center;font-weight:600">${wH}</td>
@@ -1728,7 +1729,7 @@ window.addEventListener('DOMContentLoaded', initDashboard);
   <div class="panel-header">
     <div>
       <div class="panel-title">Advisor of the Month Leaderboard</div>
-      <div class="panel-sub">Advisor of the Month Rankings · CP Hrs 30% · Hrs/RO 20% · Menu Items 20% · Warr Hrs 10% · Pen% 20% · March 2026 MTD</div>
+      <div class="panel-sub">Advisor of the Month Rankings · CP Hrs 25% · ROs 15% · Hrs/RO 15% · Menu Items 15% · Warr Hrs 10% · Pen% 20% · March 2026 MTD</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center">
       <div class="period-badge">03/01 – 03/23/26</div>
@@ -1756,6 +1757,7 @@ window.addEventListener('DOMContentLoaded', initDashboard);
             <th style="width:44px;text-align:center">Rank</th>
             <th style="text-align:left">Advisor</th>
             <th>Store</th>
+            <th>ROs</th>
             <th style="background:#1e293b;color:#fff;border-radius:4px">Power<br>Score</th>
             <th>CP<br>Hrs</th>
             <th>Warr<br>Hrs</th>
