@@ -1488,8 +1488,9 @@ function renderLeaderboard() {
   
   // ── POWER SCORE CALCULATION ──
   // Percentile-based composite score (0-100)
-  // Weights: CP Hrs 25%, RO Count 15%, Hrs/RO 15%, Combined Menu 15%, Warr Hrs 10%, Align% 7%, Tire% 7%, Valv% 6%
-  const weights = { cpHrs:0.25, ro:0.15, rap:0.15, combined:0.15, warrHrs:0.10, alignPct:0.07, tirePct:0.07, valvPct:0.06 };
+  // Weights: CP Hrs 20%, Open ROs 15% (INVERSE), RO Count 12%, Hrs/RO 13%, Combined Menu 13%, Warr Hrs 8%, Align% 7%, Tire% 6%, Valv% 6%
+  const weights = { cpHrs:0.20, openRo:0.15, ro:0.12, rap:0.13, combined:0.13, warrHrs:0.08, alignPct:0.07, tirePct:0.06, valvPct:0.06 };
+  const INVERSE_METRICS = ['openRo']; // lower is better
   const metrics = Object.keys(weights);
   
   // Compute percentile rank for each metric
@@ -1508,7 +1509,10 @@ function renderLeaderboard() {
     let score = 0;
     metrics.forEach(m => {
       const val = m === 'combined' ? a.combined : (a[m] || 0);
-      score += percentileRank(metricArrays[m], val) * weights[m];
+      let pct = percentileRank(metricArrays[m], val);
+      // Invert for metrics where lower is better
+      if (INVERSE_METRICS.includes(m)) pct = 100 - pct;
+      score += pct * weights[m];
     });
     a.powerScore = Math.round(score);
   });
@@ -1572,6 +1576,7 @@ function renderLeaderboard() {
       <td style="text-align:left"><span style="font-weight:600;color:var(--text)">${a.name}</span></td>
       <td style="text-align:center"><span style="font-size:10px;font-weight:600;color:${sc};background:${sc}15;padding:2px 8px;border-radius:4px">${storeShort[a.store]||a.store}</span></td>
       <td style="text-align:center;font-weight:600">${a.ro}</td>
+      <td style="text-align:center;font-weight:700;color:${(a.openRo||0)>20?'var(--red)':(a.openRo||0)>10?'var(--text)':'var(--green)'}">${a.openRo||0}</td>
       <td style="text-align:center;font-weight:800;font-size:14px;color:${psColor};background:#1e293b0a;border-radius:4px">${a.powerScore}</td>
       <td style="text-align:center;font-weight:600">${cpH}</td>
       <td style="text-align:center;font-weight:600">${wH}</td>
@@ -1729,7 +1734,7 @@ window.addEventListener('DOMContentLoaded', initDashboard);
   <div class="panel-header">
     <div>
       <div class="panel-title">Advisor of the Month Leaderboard</div>
-      <div class="panel-sub">Advisor of the Month Rankings · CP Hrs 25% · ROs 15% · Hrs/RO 15% · Menu Items 15% · Warr Hrs 10% · Pen% 20% · March 2026 MTD</div>
+      <div class="panel-sub">Advisor of the Month Rankings · CP Hrs 20% · Open ROs 15% (lower=better) · ROs 12% · Hrs/RO 13% · Menu 13% · Warr Hrs 8% · Pen% 19%</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center">
       <div class="period-badge">03/01 – 03/23/26</div>
@@ -1758,6 +1763,7 @@ window.addEventListener('DOMContentLoaded', initDashboard);
             <th style="text-align:left">Advisor</th>
             <th>Store</th>
             <th>ROs</th>
+            <th style="color:var(--red)">Open<br>ROs</th>
             <th style="background:#1e293b;color:#fff;border-radius:4px">Power<br>Score</th>
             <th>CP<br>Hrs</th>
             <th>Warr<br>Hrs</th>
