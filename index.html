@@ -661,6 +661,10 @@ window.parseFile = parseFile;
     size: landscape; 
     margin: 0.3in;
   }
+  @page portrait-page {
+    size: portrait;
+    margin: 0.3in;
+  }
 
   @media print {
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
@@ -727,10 +731,11 @@ window.parseFile = parseFile;
     #tab-advisors tbody tr.store-hdr td { padding: 3px 6px !important; font-size: 8px !important; }
     #tab-advisors tbody tr.store-total td { padding: 3px 4px !important; font-size: 7px !important; }
 
-    /* Leaderboard — fit on one page */
-    #tab-leaderboard table { font-size: 9px !important; min-width: 0 !important; width: 100% !important; }
-    #lb-podium { min-height: 120px !important; margin-bottom: 16px !important; }
+    /* Page 3: Leaderboard on its own page — portrait */
+    #tab-leaderboard { page-break-before: always; page: portrait-page; }
     #tab-leaderboard .cost-center-nav { display: none !important; }
+    #tab-leaderboard table { font-size: 10px !important; min-width: 0 !important; width: 100% !important; }
+    #lb-podium { min-height: 120px !important; margin-bottom: 16px !important; }
 
     /* Table containers no overflow clipping */
     .table-wrap   { box-shadow: none !important; border-radius: 4px !important; overflow: visible !important; }
@@ -1160,11 +1165,9 @@ function renderGPCards() {
     grid.innerHTML += `
       <div class="store-card ${s.cssClass}">
         <div class="card-store-name"><span class="store-dot dot-${s.cssClass}"></span>${s.name}</div>
-        <div class="gp-total-row">
-          <div class="gp-amount">${gpFmt$(s.total)}</div>
-          <div class="gp-ly"><span>LY ${gpFull$(s.lyTotal)}</span><span style="color:${varAmt>=0?'var(--green)':'var(--red)'}">${varStr}</span></div>
-        </div>
-        <div class="yoy-badge ${d}">${gpArrow(s.totalYoy)} ${gpPct(s.totalYoy)} YoY</div>
+        <div class="gp-amount">${gpFmt$(s.total)}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">LY ${gpFull$(s.lyTotal)}</div>
+        <div class="yoy-badge ${d}" style="margin-top:6px">${gpArrow(s.totalYoy)} ${gpPct(s.totalYoy)} YoY <span style="font-size:11px;color:${varAmt>=0?'var(--green)':'var(--red)'};font-weight:600">${varStr}</span></div>
         <div class="pace-bar-track"><div class="pace-bar-fill ${d}" style="width:${pw}%"></div></div>
         ${openRoHtml}
         <div class="cc-breakdown">${renderGPCC(s)}</div>
