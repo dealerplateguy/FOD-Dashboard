@@ -107,11 +107,11 @@ function parseGP(wb, filename) {
   if (updated > 0) {
     renderGPCards();
     gpRenderTable();
-    setZoneStatus('dz-gp', `✓ Updated ${updated} stores`, 'ok');
-    addLog(`GP Totals: updated ${updated} stores from ${filename}`, 'ok');
+    upStatus('gp', `✓ Updated ${updated} stores`, 'ok');
+    upLog(`GP Totals: updated ${updated} stores from ${filename}`, 'ok');
   } else {
-    setZoneStatus('dz-gp', '⚠ No matching stores found', 'err');
-    addLog(`GP Totals: no Rohrman stores found in ${filename}`, 'err');
+    upStatus('gp', '⚠ No matching stores found', 'err');
+    upLog(`GP Totals: no Rohrman stores found in ${filename}`, 'err');
   }
 }
 
@@ -119,7 +119,7 @@ function parseGP(wb, filename) {
 function parseSA(wb, filename) {
   const ws = wb.Sheets[wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-  if (rows.length < 2) { setZoneStatus('dz-sa','⚠ Empty file','err'); return; }
+  if (rows.length < 2) { upStatus('sa','⚠ Empty file','err'); return; }
 
   // Row 0 is headers
   const headers = rows[0].map(h => String(h).trim().toUpperCase());
@@ -140,7 +140,7 @@ function parseSA(wb, filename) {
     valvCnt:   col('VALVOLINE TOTAL FLUSH'),
   };
 
-  addLog(`SA columns mapped: RO=${C.ro} DISC=${C.disc} RAP=${C.rap} ELR=${C.elr}`, 'info');
+  upLog(`SA columns mapped: RO=${C.ro} DISC=${C.disc} RAP=${C.rap} ELR=${C.elr}`, 'info');
 
   const newData = [];
   rows.slice(1).forEach(row => {
@@ -183,11 +183,11 @@ function parseSA(wb, filename) {
     filtered.forEach(a => saAdvisors.push(a));
     saRenderTable();
     renderLeaderboard();
-    setZoneStatus('dz-sa', `✓ Loaded ${filtered.length} advisors`, 'ok');
-    addLog(`SA Totals: loaded ${filtered.length} advisors from ${filename}`, 'ok');
+    upStatus('sa', `✓ Loaded ${filtered.length} advisors`, 'ok');
+    upLog(`SA Totals: loaded ${filtered.length} advisors from ${filename}`, 'ok');
   } else {
-    setZoneStatus('dz-sa', '⚠ No advisors found', 'err');
-    addLog(`SA Totals: no valid advisors found in ${filename}`, 'err');
+    upStatus('sa', '⚠ No advisors found', 'err');
+    upLog(`SA Totals: no valid advisors found in ${filename}`, 'err');
   }
 }
 
@@ -198,7 +198,7 @@ function parseEmail(wb, filename) {
   // Find header row (has 'ADVISOR' and 'Pen %')
   let headerRow = -1;
   rows.forEach((r, i) => { if (String(r[4]).toUpperCase().includes('ADVISOR')) headerRow = i; });
-  if (headerRow < 0) { setZoneStatus('dz-email','⚠ Header not found','err'); return; }
+  if (headerRow < 0) { upStatus('email','⚠ Header not found','err'); return; }
 
   let updated = 0;
   rows.slice(headerRow + 1).forEach(row => {
@@ -211,8 +211,8 @@ function parseEmail(wb, filename) {
   });
 
   saRenderTable();
-  setZoneStatus('dz-email', `✓ Updated ${updated} advisors`, 'ok');
-  addLog(`Email: updated ${updated} advisors from ${filename}`, 'ok');
+  upStatus('email', `✓ Updated ${updated} advisors`, 'ok');
+  upLog(`Email: updated ${updated} advisors from ${filename}`, 'ok');
 }
 
 // ── PARSE WIP ──
@@ -249,8 +249,8 @@ function parseWIP(wb, filename) {
   }
 
   renderGPCards(); gpRenderTable();
-  setZoneStatus('dz-wip', `✓ Updated ${updated} stores`, updated > 0 ? 'ok' : 'err');
-  addLog(`WIP: updated ${updated} stores from ${filename}`, updated > 0 ? 'ok' : 'err');
+  upStatus('wip', `✓ Updated ${updated} stores`, updated > 0 ? 'ok' : 'err');
+  upLog(`WIP: updated ${updated} stores from ${filename}`, updated > 0 ? 'ok' : 'err');
 }
 
 // ── PARSE PURSUIT PDF ──
@@ -324,20 +324,20 @@ function parsePursuit(file) {
       if (updated > 0) {
         renderPursuit();
         buildPursuitEntry();
-        setZoneStatus('dz-pursuit', `✓ Updated ${updated} stores`, 'ok');
-        addLog(`Pursuit: updated ${updated} stores from ${file.name}`, 'ok');
+        upStatus('pursuit', `✓ Updated ${updated} stores`, 'ok');
+        upLog(`Pursuit: updated ${updated} stores from ${file.name}`, 'ok');
       } else {
         // Fallback: show manual entry panel with instructions
-        setZoneStatus('dz-pursuit', '⚠ Auto-parse limited — use manual entry panel on Infinite Pursuit tab', 'err');
-        addLog(`Pursuit: PDF text extraction limited for ${file.name} — use the manual entry panel`, 'err');
+        upStatus('pursuit', '⚠ Auto-parse limited — use manual entry panel on Infinite Pursuit tab', 'err');
+        upLog(`Pursuit: PDF text extraction limited for ${file.name} — use the manual entry panel`, 'err');
         // Switch to pursuit tab and open entry panel
         document.querySelectorAll('.tab-btn').forEach(b => { if (b.textContent.includes('Infinite')) b.click(); });
         const p = document.getElementById('pursuit-entry-panel');
         if (p) { p.style.display = 'block'; document.getElementById('pursuit-toggle-icon').textContent = 'COLLAPSE ▲'; }
       }
     } catch(err) {
-      setZoneStatus('dz-pursuit', '✗ Error: ' + err.message, 'err');
-      addLog('Pursuit parse error: ' + err.message, 'err');
+      upStatus('pursuit', '✗ Error: ' + err.message, 'err');
+      upLog('Pursuit parse error: ' + err.message, 'err');
     }
   };
   reader.readAsArrayBuffer(file);
@@ -355,7 +355,7 @@ function parseTech(wb, filename) {
     // Try alternate header detection
     rows.forEach((r, i) => { if (String(r[0]).toUpperCase().includes('DEALER ID/RO')) headerRow = i; });
   }
-  if (headerRow < 0) { setZoneStatus('dz-tech','⚠ Header not found','err'); addLog('Tech: header row not found','err'); return; }
+  if (headerRow < 0) { upStatus('tech','⚠ Header not found','err'); upLog('Tech: header row not found','err'); return; }
 
   // Col indices (0-based): dealer=14, advisor=32, vidSent=99, vidViewed=107, onlinePay=118
   const aggData = {};
@@ -391,8 +391,8 @@ function parseTech(wb, filename) {
   });
 
   saRenderTable();
-  setZoneStatus('dz-tech', `✓ Updated ${updated} advisors`, 'ok');
-  addLog(`Tech: updated ${updated} advisors from ${filename}`, 'ok');
+  upStatus('tech', `✓ Updated ${updated} advisors`, 'ok');
+  upLog(`Tech: updated ${updated} advisors from ${filename}`, 'ok');
 }
 
 </script>
@@ -1421,6 +1421,47 @@ function initDashboard() {
   });
 }
 
+// ── UPLOAD HANDLER (clean simple version) ──
+function upLog(msg, cls) {
+  var log = document.getElementById('up-log');
+  if (!log) return;
+  var d = document.createElement('div');
+  d.className = cls || 'inf';
+  d.textContent = new Date().toLocaleTimeString() + ' — ' + msg;
+  log.insertBefore(d, log.firstChild);
+}
+
+function upStatus(type, msg, cls) {
+  var el = document.getElementById('up-' + type + '-status');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.color = cls === 'ok' ? '#0f9b58' : cls === 'err' ? '#d93025' : '#8a96a8';
+}
+
+function upHandle(file, type) {
+  if (!file) { upLog('No file received', 'err'); return; }
+  upLog('Reading: ' + file.name);
+  if (type === 'pursuit') { parsePursuit(file); return; }
+  if (typeof XLSX === 'undefined') { upLog('SheetJS not loaded', 'err'); return; }
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
+      upLog('Parsed ' + file.name + ' — ' + wb.SheetNames.length + ' sheet(s)', 'ok');
+      if (type === 'gp')    { parseGP(wb, file.name);    upStatus('gp',    '✓ Updated', 'ok'); }
+      if (type === 'sa')    { parseSA(wb, file.name);    upStatus('sa',    '✓ Updated', 'ok'); }
+      if (type === 'email') { parseEmail(wb, file.name); upStatus('email', '✓ Updated', 'ok'); }
+      if (type === 'wip')   { parseWIP(wb, file.name);   upStatus('wip',   '✓ Updated', 'ok'); }
+      if (type === 'tech')  { parseTech(wb, file.name);  upStatus('tech',  '✓ Updated', 'ok'); }
+    } catch(err) {
+      upLog('Error: ' + err.message, 'err');
+      upStatus(type, '✗ ' + err.message, 'err');
+    }
+  };
+  reader.onerror = function() { upLog('FileReader failed', 'err'); };
+  reader.readAsArrayBuffer(file);
+}
+
 // Expose functions needed by inline handlers
 // dzFile is a plain global function - no alias needed
 window.dzDrag  = function(e,id){ e.preventDefault(); var el=document.getElementById(id); if(el) el.classList.add('drag-over'); };
@@ -1494,90 +1535,87 @@ window.addEventListener('DOMContentLoaded', initDashboard);
   <div class="panel-header">
     <div>
       <div class="panel-title">Upload Data Files</div>
-      <div class="panel-sub">Drag & drop or click to select · Updates dashboard instantly</div>
-    </div>
-    <div class="period-badge">Auto-refreshes all tabs</div>
-  </div>
-
-
-
-  <div class="upload-grid">
-
-    <!-- GP Totals -->
-    <div class="drop-zone" id="dz-gp" ondragover="dzDrag(event,'dz-gp')" ondragleave="dzLeave('dz-gp')" ondrop="dzDrop(event,'gp')">
-      <div class="drop-icon">📊</div>
-      <div class="drop-title">GP Group Totals</div>
-      <div class="drop-filename">TOTAL_GROUP_GROSS_REVIEW.xlsx</div>
-      <div style="font-size:11px;color:var(--muted);margin-bottom:12px">Updates GP Pace projected & LY totals</div>
-      <label for="fi-gp" style="display:inline-block;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Choose File</label>
-      <input type="file" id="fi-gp" onchange="dzFile(this.files[0],'gp')" accept=".xlsx,.xls" style="display:none">
-      <div class="drop-status" id="dz-gp-status"></div>
-    </div>
-
-    <!-- SA Totals -->
-    <div class="drop-zone" id="dz-sa" ondragover="dzDrag(event,'dz-sa')" ondragleave="dzLeave('dz-sa')" ondrop="dzDrop(event,'sa')">
-      <div class="drop-icon">👤</div>
-      <div class="drop-title">SA Totals Report</div>
-      <div class="drop-filename">TOTAL_SA_TOTALS_*.xlsx</div>
-      <div style="font-size:11px;color:var(--muted);margin-bottom:12px">Updates advisor scorecard & leaderboard</div>
-      <label for="fi-sa" style="display:inline-block;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Choose File</label>
-      <input type="file" id="fi-sa" onchange="dzFile(this.files[0],'sa')" accept=".xlsx,.xls" style="display:none">
-      <div class="drop-status" id="dz-sa-status"></div>
-    </div>
-
-    <!-- Email List -->
-    <div class="drop-zone" id="dz-email" ondragover="dzDrag(event,'dz-email')" ondragleave="dzLeave('dz-email')" ondrop="dzDrop(event,'email')">
-      <div class="drop-icon">✉️</div>
-      <div class="drop-title">Email Capture List</div>
-      <div class="drop-filename">Customer_Email_List.xlsx</div>
-      <div style="font-size:11px;color:var(--muted);margin-bottom:12px">Updates email capture % per advisor</div>
-      <label for="fi-email" style="display:inline-block;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Choose File</label>
-      <input type="file" id="fi-email" onchange="dzFile(this.files[0],'email')" accept=".xlsx,.xls" style="display:none">
-      <div class="drop-status" id="dz-email-status"></div>
-    </div>
-
-    <!-- Infinite Pursuit PDF -->
-    <div class="drop-zone" id="dz-pursuit" ondragover="dzDrag(event,'dz-pursuit')" ondragleave="dzLeave('dz-pursuit')" ondrop="dzDrop(event,'pursuit')">
-      <div class="drop-icon">🎯</div>
-      <div class="drop-title">Infinite Pursuit Report</div>
-      <div class="drop-filename">2026_ESTIMATED_PURSUIT_*.pdf</div>
-      <div style="font-size:11px;color:var(--muted);margin-bottom:12px">Updates pursuit points & all metrics</div>
-      <label for="fi-pursuit" style="display:inline-block;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Choose File</label>
-      <input type="file" id="fi-pursuit" onchange="dzFile(this.files[0],'pursuit')" accept=".pdf" style="display:none">
-      <div class="drop-status" id="dz-pursuit-status"></div>
-    </div>
-
-    <!-- WIP Report -->
-    <div class="drop-zone" id="dz-wip" ondragover="dzDrag(event,'dz-wip')" ondragleave="dzLeave('dz-wip')" ondrop="dzDrop(event,'wip')">
-      <div class="drop-icon">🔧</div>
-      <div class="drop-title">Work In Process</div>
-      <div class="drop-filename">WORK_IN_PROCESS_*.xlsx</div>
-      <div style="font-size:11px;color:var(--muted);margin-bottom:12px">Updates Open ROs & Over 30 per store</div>
-      <label for="fi-wip" style="display:inline-block;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Choose File</label>
-      <input type="file" id="fi-wip" onchange="dzFile(this.files[0],'wip')" accept=".xlsx,.xls" style="display:none">
-      <div class="drop-status" id="dz-wip-status"></div>
-    </div>
-
-    <!-- Advisor Technology -->
-    <div class="drop-zone" id="dz-tech" ondragover="dzDrag(event,'dz-tech')" ondragleave="dzLeave('dz-tech')" ondrop="dzDrop(event,'tech')">
-      <div class="drop-icon">📱</div>
-      <div class="drop-title">Advisor Technology</div>
-      <div class="drop-filename">ADVISOR_TECHNOLOGY.xlsx</div>
-      <div style="font-size:11px;color:var(--muted);margin-bottom:12px">Updates video sent/viewed & online pay %</div>
-      <label for="fi-tech" style="display:inline-block;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Choose File</label>
-      <input type="file" id="fi-tech" onchange="dzFile(this.files[0],'tech')" accept=".xlsx,.xls" style="display:none">
-      <div class="drop-status" id="dz-tech-status"></div>
-    </div>
-
-  </div>
-
-  <div class="summary-card">
-    <div class="summary-card-header">Upload Log</div>
-    <div class="upload-log" id="upload-log">
-      <div class="log-line info">— No files uploaded yet. Drop your files above to update the dashboard. —</div>
+      <div class="panel-sub">Click Choose File or drag & drop · Updates dashboard instantly</div>
     </div>
   </div>
-</div>
+
+  <style>
+    .up-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:14px; margin-bottom:20px; }
+    .up-card { background:#fff; border:2px dashed #d0d5de; border-radius:10px; padding:24px 16px; text-align:center; }
+    .up-card:hover { border-color:#1a56db; background:#eef3ff; }
+    .up-icon { font-size:28px; margin-bottom:8px; }
+    .up-title { font-weight:700; font-size:13px; color:#0f1623; margin-bottom:3px; }
+    .up-hint { font-size:11px; color:#8a96a8; margin-bottom:12px; }
+    .up-label { display:inline-block; background:#1a56db; color:#fff; padding:7px 18px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; }
+    .up-input { display:none; }
+    .up-status { font-size:11px; font-weight:600; margin-top:8px; min-height:16px; }
+    .up-log { background:#1e293b; color:#94a3b8; border-radius:8px; padding:14px; font-family:monospace; font-size:11px; max-height:200px; overflow-y:auto; margin-top:16px; }
+    .up-log .ok  { color:#0f9b58; }
+    .up-log .err { color:#d93025; }
+    .up-log .inf { color:#8a96a8; }
+  </style>
+
+  <div class="up-grid">
+
+    <div class="up-card">
+      <div class="up-icon">📊</div>
+      <div class="up-title">GP Group Totals</div>
+      <div class="up-hint">TOTAL_GROUP_GROSS_REVIEW.xlsx</div>
+      <label class="up-label" for="up-gp">Choose File</label>
+      <input class="up-input" type="file" id="up-gp" accept=".xlsx,.xls" onchange="upHandle(this.files[0],'gp')">
+      <div class="up-status" id="up-gp-status"></div>
+    </div>
+
+    <div class="up-card">
+      <div class="up-icon">👤</div>
+      <div class="up-title">SA Totals Report</div>
+      <div class="up-hint">TOTAL_SA_TOTALS_*.xlsx</div>
+      <label class="up-label" for="up-sa">Choose File</label>
+      <input class="up-input" type="file" id="up-sa" accept=".xlsx,.xls" onchange="upHandle(this.files[0],'sa')">
+      <div class="up-status" id="up-sa-status"></div>
+    </div>
+
+    <div class="up-card">
+      <div class="up-icon">✉️</div>
+      <div class="up-title">Email Capture List</div>
+      <div class="up-hint">Customer_Email_List.xlsx</div>
+      <label class="up-label" for="up-email">Choose File</label>
+      <input class="up-input" type="file" id="up-email" accept=".xlsx,.xls" onchange="upHandle(this.files[0],'email')">
+      <div class="up-status" id="up-email-status"></div>
+    </div>
+
+    <div class="up-card">
+      <div class="up-icon">🎯</div>
+      <div class="up-title">Infinite Pursuit</div>
+      <div class="up-hint">2026_ESTIMATED_PURSUIT_*.pdf</div>
+      <label class="up-label" for="up-pursuit">Choose File</label>
+      <input class="up-input" type="file" id="up-pursuit" accept=".pdf" onchange="upHandle(this.files[0],'pursuit')">
+      <div class="up-status" id="up-pursuit-status"></div>
+    </div>
+
+    <div class="up-card">
+      <div class="up-icon">🔧</div>
+      <div class="up-title">Work In Process</div>
+      <div class="up-hint">WORK_IN_PROCESS_*.xlsx</div>
+      <label class="up-label" for="up-wip">Choose File</label>
+      <input class="up-input" type="file" id="up-wip" accept=".xlsx,.xls" onchange="upHandle(this.files[0],'wip')">
+      <div class="up-status" id="up-wip-status"></div>
+    </div>
+
+    <div class="up-card">
+      <div class="up-icon">📱</div>
+      <div class="up-title">Advisor Technology</div>
+      <div class="up-hint">ADVISOR_TECHNOLOGY.xlsx</div>
+      <label class="up-label" for="up-tech">Choose File</label>
+      <input class="up-input" type="file" id="up-tech" accept=".xlsx,.xls" onchange="upHandle(this.files[0],'tech')">
+      <div class="up-status" id="up-tech-status"></div>
+    </div>
+
+  </div>
+
+  <div class="up-log" id="up-log"><div class="inf">Ready — choose a file above to update the dashboard.</div></div>
+
+</div></div>
 
 
 
