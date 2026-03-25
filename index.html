@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fixed Ops Director Dashboard — Rohrman</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* ── SHARED VARIABLES ── */
+  :root {
+    --bg:        #f4f6f9;
+    --surface:   #ffffff;
+    --surface2:  #f0f2f5;
+    --border:    #e2e6ed;
+    --border2:   #d0d5de;
+    --text:      #0f1623;
+    --text2:     #3d4a5c;
+    --muted:     #8a96a8;
+    --green:     #0f9b58;
+    --green-bg:  #edfaf3;
+    --red:       #d93025;
+    --red-bg:    #fdf0ef;
+    --accent:    #1a56db;
+    --accent-bg: #eef3ff;
+    --top-bg:    #ecfdf5;
+    --top-text:  #065f46;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; font-size: 13px; min-height: 100vh; }
+
+  /* ── GLOBAL HEADER ── */
+  .global-header {
+    background: #1e293b;
+    padding: 0 24px;
+    display: flex;
+    align-items: stretch;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 200;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  }
+  .header-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 0;
+  }
+  .brand-logo {
+    font-size: 16px;
+    font-weight: 800;
+    color: #ffffff;
+    letter-spacing: -0.5px;
+  }
+  .brand-divider { width: 1px; height: 20px; background: #334155; }
+  .brand-sub { font-size: 11px; color: #64748b; font-family: 'DM Mono', monospace; text-transform: uppercase; letter-spacing: 0.8px; }
+
+  /* ── TAB NAV ── */
+  .tab-nav {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+  }
+  .tab-btn {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 0 20px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #64748b;
+    cursor: pointer;
+    border: none;
+    background: none;
+    font-family: 'Inter', sans-serif;
+    border-bottom: 3px solid transparent;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .tab-btn:hover { color: #cbd5e1; }
+  .tab-btn.active { color: #ffffff; border-bottom-color: #1a56db; }
+  .tab-icon { font-size: 14px; }
+
+  /* ── HEADER RIGHT ── */
+  .header-right-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 0;
+  }
+  .period-chip {
+    background: rgba(26,86,219,0.2);
+    color: #93c5fd;
+    font-size: 10px;
+    font-weight: 600;
+    font-family: 'DM Mono', monospace;
+    padding: 3px 10px;
+    border-radius: 4px;
+    border: 1px solid rgba(26,86,219,0.3);
+  }
+
+  /* ── TAB PANELS ── */
+  .tab-panel { display: none; padding: 24px; }
+  .tab-panel.active { display: block; }
+
+  /* ── PANEL SECTION HEADER ── */
+  .panel-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    padding-bottom: 14px;
+    border-bottom: 2px solid var(--border);
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .panel-title { font-size: 18px; font-weight: 700; letter-spacing: -0.4px; }
+  .panel-sub { font-size: 11px; color: var(--muted); font-family: 'DM Mono', monospace; text-transform: uppercase; letter-spacing: 0.8px; margin-top: 3px; }
+
+  /* ── SHARED CARD ── */
+  .summary-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+  .summary-card-header { padding: 11px 16px; border-bottom: 1px solid var(--border); font-size: 11px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.8px; font-family: 'DM Mono', monospace; background: var(--surface2); }
+
+  /* ── PURSUIT CARDS ── */
+  .pursuit-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .pursuit-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); position: relative; overflow: hidden; }
+  .pursuit-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; }
+  .pursuit-card.honda::before      { background:#cc2222; }
+  .pursuit-card.toyota::before     { background:#c8820a; }
+  .pursuit-card.kia::before        { background:#2563eb; }
+  .pursuit-card.lafhyundai::before { background:#0891b2; }
+  .pursuit-card.indyhyundai::before{ background:#7c3aed; }
+  .pursuit-store { font-size:10px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:0.8px; margin-bottom:10px; }
+  .pursuit-points { font-family:'DM Mono',monospace; font-size:36px; font-weight:700; line-height:1; color:var(--text); }
+  .pursuit-label { font-size:10px; color:var(--muted); margin-top:2px; }
+  .pursuit-bar-track { height:4px; background:var(--border); border-radius:2px; overflow:hidden; margin:10px 0 8px; }
+  .pursuit-bar-fill { height:100%; border-radius:2px; }
+  .pursuit-metrics { display:grid; grid-template-columns:1fr 1fr; gap:6px; border-top:1px solid var(--border); padding-top:10px; margin-top:4px; }
+  .pm-item { text-align:center; }
+  .pm-label { font-size:9px; text-transform:uppercase; letter-spacing:0.5px; color:var(--muted); margin-bottom:2px; }
+  .pm-val { font-family:'DM Mono',monospace; font-size:12px; font-weight:600; color:var(--text); }
+  .pm-val.good { color:var(--green); }
+  .pm-val.bad  { color:var(--red); }
+
+  /* ── GP PACE STYLES ── */
+  .stores-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(290px,1fr)); gap:12px; margin-bottom:20px; }
+  .store-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:16px; position:relative; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.05); }
+  .store-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; }
+  .store-card.honda::before      { background:#cc2222; }
+  .store-card.toyota::before     { background:#c8820a; }
+  .store-card.kia::before        { background:#2563eb; }
+  .store-card.lafhyundai::before { background:#0891b2; }
+  .store-card.indyhyundai::before{ background:#7c3aed; }
+  .card-store-name { font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:0.8px; margin-bottom:10px; display:flex; align-items:center; gap:6px; }
+  .store-dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; display:inline-block; }
+  .dot-honda       { background:#cc2222; }
+  .dot-toyota      { background:#c8820a; }
+  .dot-kia         { background:#2563eb; }
+  .dot-lafhyundai  { background:#0891b2; }
+  .dot-indyhyundai { background:#7c3aed; }
+  .gp-total-row { display:flex; align-items:flex-end; justify-content:space-between; margin-bottom:10px; }
+  .gp-amount { font-family:'DM Mono',monospace; font-size:28px; font-weight:500; color:var(--text); line-height:1; letter-spacing:-1px; }
+  .gp-ly { font-family:'DM Mono',monospace; font-size:10px; color:var(--muted); text-align:right; line-height:1.7; }
+  .yoy-badge { display:inline-flex; align-items:center; gap:4px; font-family:'DM Mono',monospace; font-size:12px; font-weight:600; padding:3px 8px; border-radius:5px; margin-bottom:12px; }
+  .yoy-badge.up   { background:var(--green-bg); color:var(--green); }
+  .yoy-badge.down { background:var(--red-bg);   color:var(--red); }
+  .yoy-badge.flat { background:var(--surface2); color:var(--muted); }
+  .pace-bar-track { height:4px; background:var(--border); border-radius:2px; overflow:hidden; margin-bottom:14px; }
+  .pace-bar-fill  { height:100%; border-radius:2px; transition:width 0.5s ease; }
+  .pace-bar-fill.up   { background:var(--green); }
+  .pace-bar-fill.down { background:var(--red); }
+  .pace-bar-fill.flat { background:var(--muted); }
+  .cc-breakdown { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; padding-top:12px; border-top:1px solid var(--border); }
+  .cc-item { text-align:center; }
+  .cc-label { font-size:9px; text-transform:uppercase; letter-spacing:0.8px; color:var(--muted); margin-bottom:2px; font-weight:500; }
+  .cc-value { font-family:'DM Mono',monospace; font-size:12px; font-weight:500; color:var(--text); }
+  .cc-yoy { font-family:'DM Mono',monospace; font-size:10px; margin-top:1px; font-weight:500; }
+  .cc-yoy.up   { color:var(--green); }
+  .cc-yoy.down { color:var(--red); }
+  .cc-yoy.flat { color:var(--muted); }
+  .cost-center-nav { display:flex; gap:4px; margin-bottom:18px; flex-wrap:wrap; }
+  .cc-btn { background:var(--surface); border:1px solid var(--border2); border-radius:6px; padding:6px 16px; font-size:12px; font-weight:500; color:var(--text2); cursor:pointer; font-family:'Inter',sans-serif; transition:all 0.12s; }
+  .cc-btn:hover { background:var(--surface2); border-color:var(--accent); color:var(--accent); }
+  .cc-btn.active { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+  .entry-input { background:var(--surface); border:1px solid var(--border2); border-radius:4px; padding:4px 7px; color:var(--text); font-family:'DM Mono',monospace; font-size:12px; width:100px; text-align:right; }
+  .entry-input:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 2px rgba(26,86,219,0.1); }
+  .apply-btn { margin-top:14px; background:var(--accent); color:#fff; border:none; border-radius:6px; padding:8px 20px; font-size:13px; font-weight:600; cursor:pointer; font-family:'Inter',sans-serif; }
+
+  /* ── SA SCORECARD STYLES ── */
+  .filters { display:flex; gap:5px; margin-bottom:16px; flex-wrap:wrap; align-items:center; }
+  .filter-label { font-size:11px; color:var(--muted); font-weight:600; margin-right:2px; text-transform:uppercase; letter-spacing:0.5px; }
+  .filter-btn { background:var(--surface); border:1px solid var(--border2); border-radius:6px; padding:5px 14px; font-size:12px; font-weight:500; color:var(--text2); cursor:pointer; transition:all 0.12s; }
+  .filter-btn:hover { border-color:var(--accent); color:var(--accent); }
+  .filter-btn.active { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+  .table-wrap { background:var(--surface); border:1px solid var(--border); border-radius:10px; overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,0.05); }
+  .table-scroll { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; font-size:12px; }
+  thead tr.group-row th { background:#1e293b; color:#cbd5e1; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:1px; padding:10px 12px; font-family:'DM Mono',monospace; border-right:1px solid #334155; text-align:center; white-space:nowrap; }
+  thead tr.group-row th.left { text-align:left; }
+  thead tr.group-row th.group-divider { border-left:2px solid #475569; }
+  thead tr.sub-row th { background:#f1f5f9; color:var(--muted); font-size:9.5px; font-weight:600; text-transform:uppercase; letter-spacing:0.6px; padding:6px 12px; font-family:'DM Mono',monospace; border-bottom:2px solid var(--border2); border-right:1px solid var(--border); text-align:center; white-space:nowrap; }
+  thead tr.sub-row th.left { text-align:left; }
+  tbody tr { border-bottom:1px solid var(--border); }
+  tbody tr:last-child { border-bottom:none; }
+  tbody tr:hover td { background:#f8fafc; }
+  tbody tr.store-hdr td { background:#1e293b; color:#64748b; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:1.2px; padding:7px 14px; font-family:'DM Mono',monospace; }
+  tbody tr.store-total td { background:#f8fafc; color:var(--text2); font-weight:600; font-family:'DM Mono',monospace; font-size:11px; padding:8px 12px; border-top:2px solid var(--border2); }
+  td { padding:10px 12px; white-space:nowrap; border-right:1px solid var(--border); color:var(--text); vertical-align:middle; }
+  td:last-child { border-right:none; }
+  td.num { text-align:right; font-family:'DM Mono',monospace; color:var(--text2); }
+  td.left { text-align:left; }
+  td.gdiv, th.gdiv { border-left:2px solid var(--border2) !important; }
+  .adv-name { font-weight:600; font-size:12px; color:var(--text); }
+  .val-wrap { display:flex; align-items:center; justify-content:flex-end; gap:5px; }
+  .status-dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+  .dot-green { background:var(--green); }
+  .dot-miss  { background:var(--red); }
+  .v-ok-green { color:var(--green); font-weight:600; }
+  .v-miss     { color:var(--red);   font-weight:600; }
+  .v-neu      { color:var(--text2); }
+  .ro-cell { display:flex; flex-direction:column; align-items:flex-end; gap:3px; }
+  .ro-bar-track { width:52px; height:3px; background:var(--border2); border-radius:2px; overflow:hidden; }
+  .ro-bar-fill  { height:100%; border-radius:2px; }
+  .legend { display:flex; gap:14px; align-items:center; font-size:11px; color:var(--muted); }
+  .legend-item { display:flex; align-items:center; gap:5px; }
+  .l-dot { width:8px; height:8px; border-radius:50%; }
+
+  /* ── SHARED TABLE ── */
+  .period-badge { background:var(--accent-bg); color:var(--accent); font-size:11px; font-weight:600; font-family:'DM Mono',monospace; padding:5px 12px; border-radius:5px; border:1px solid #c3d3f7; white-space:nowrap; }
+  .chip { display:inline-block; padding:2px 7px; border-radius:4px; font-size:11px; font-family:'DM Mono',monospace; font-weight:600; }
+  .chip.up   { background:var(--green-bg); color:var(--green); }
+  .chip.down { background:var(--red-bg);   color:var(--red); }
+  .chip.flat { background:var(--surface2); color:var(--muted); }
+  .total-row td { font-weight:700; background:#f0f4ff; border-top:2px solid #c3d3f7; }
+
+  /* ── PRINT ── */
+  @media print {
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    body { background: #fff !important; font-size: 10px; padding: 0; }
+
+    .global-header { position: static; background: #1e293b !important; padding: 8px 16px; box-shadow: none; margin-bottom: 12px; }
+    .tab-nav { display: none !important; }
+    .header-right-info { display: none !important; }
+
+    /* Show ALL panels stacked */
+    .tab-panel { display: block !important; padding: 0 14px 20px; }
+
+    /* Section breaks between panels */
+    #tab-gppace  { border-top: 2px solid #e2e6ed; padding-top: 16px; }
+    #tab-advisors { border-top: 2px solid #e2e6ed; padding-top: 16px; page-break-before: always; }
+
+    /* Panel headers smaller */
+    .panel-title { font-size: 14px !important; }
+    .panel-sub   { font-size: 9px !important; }
+    .panel-header { margin-bottom: 10px; padding-bottom: 8px; }
+
+    /* Hide interactive controls */
+    .cost-center-nav { display: none !important; }
+    .filters         { display: none !important; }
+    #entry-panel     { display: none !important; }
+    .summary-card-header[onclick] { cursor: default; }
+    #entry-toggle-icon { display: none !important; }
+    .apply-btn { display: none !important; }
+
+    /* Compact cards */
+    .stores-grid  { grid-template-columns: repeat(5, 1fr) !important; gap: 6px !important; margin-bottom: 10px !important; }
+    .pursuit-grid { grid-template-columns: repeat(5, 1fr) !important; gap: 6px !important; margin-bottom: 10px !important; }
+    .store-card, .pursuit-card { padding: 10px !important; }
+    .gp-amount    { font-size: 18px !important; }
+    .pursuit-points { font-size: 26px !important; }
+
+    /* Tables compact */
+    table { font-size: 9px !important; min-width: 0 !important; width: 100% !important; }
+    thead tr.group-row th { padding: 5px 6px !important; font-size: 8px !important; }
+    thead tr.sub-row th   { padding: 3px 6px !important; font-size: 7.5px !important; }
+    tbody td { padding: 5px 6px !important; }
+    tbody tr.store-hdr td { padding: 4px 8px !important; }
+
+    /* Table wrap no overflow clipping */
+    .table-wrap   { box-shadow: none !important; border-radius: 4px !important; overflow: visible !important; }
+    .table-scroll { overflow: visible !important; }
+
+    /* Summary card */
+    .summary-card { box-shadow: none !important; margin-bottom: 8px !important; }
+  }
+
+</style>
+</head>
+<body>
+
+<!-- ══ GLOBAL HEADER ══ -->
+<div class="global-header">
+  <div class="header-brand">
+    <div class="brand-logo">Rohrman Fixed Ops</div>
+    <div class="brand-divider"></div>
+    <div class="brand-sub">Director Dashboard</div>
+  </div>
+  <div class="tab-nav">
+    <button class="tab-btn active" onclick="switchTab('pursuit', this)">
+      <span class="tab-icon">🎯</span> Infinite Pursuit
+    </button>
+    <button class="tab-btn" onclick="switchTab('gppace', this)">
+      <span class="tab-icon">📈</span> GP Pace
+    </button>
+    <button class="tab-btn" onclick="switchTab('advisors', this)">
+      <span class="tab-icon">👤</span> Advisor Scorecard
+    </button>
+  </div>
+  <div class="header-right-info">
+    <div class="period-chip">03/01 – 03/23/26</div>
+    <button onclick="window.print()" style="background:#1a56db;color:#fff;border:none;border-radius:5px;padding:5px 14px;font-size:11px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">🖨 Print All</button>
+  </div>
+</div>
+
+<!-- ══ TAB: INFINITE PURSUIT ══ -->
+<div class="tab-panel active" id="tab-pursuit">
+  <div class="panel-header">
+    <div>
+      <div class="panel-title">Infinite Pursuit Projections</div>
+      <div class="panel-sub">Store performance vs standards · March 2026 MTD</div>
+    </div>
+    <div class="period-badge">Goal: 70 pts</div>
+  </div>
+
+  <div class="pursuit-grid" id="pursuit-grid"></div>
+
+  <div class="summary-card">
+    <div class="summary-card-header">All Stores · Pursuit Summary</div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr class="group-row">
+            <th class="left">Store</th>
+            <th>Points</th>
+            <th>Service GP%</th>
+            <th>Total GP YoY</th>
+            <th>CP YoY</th>
+            <th>Alignment%</th>
+            <th>Valvoline%</th>
+            <th>Tires%</th>
+            <th>Policy%</th>
+            <th>Op Profit%</th>
+          </tr>
+        </thead>
+        <tbody id="pursuit-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══ TAB: GP PACE ══ -->
+<div class="tab-panel" id="tab-gppace">
+  <div class="panel-header">
+    <div>
+      <div class="panel-title">Gross Profit Pace</div>
+      <div class="panel-sub">Projected Month-End vs Prior Year</div>
+    </div>
+    <div class="period-badge">Week ending 03/23/26</div>
+  </div>
+
+  <div class="summary-card">
+    <div class="summary-card-header" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="toggleEntry()">
+      <span>Enter CP / Warranty / Internal — Projected &amp; LY</span>
+      <span id="entry-toggle-icon" style="color:var(--accent);font-size:10px;font-weight:700">EXPAND ▼</span>
+    </div>
+    <div id="entry-panel" style="display:none;padding:16px;overflow-x:auto">
+      <table>
+        <thead>
+          <tr class="group-row">
+            <th class="left">Store</th>
+            <th colspan="2" style="text-align:center;color:#93c5fd">Customer Pay</th>
+            <th colspan="2" style="text-align:center;color:#67e8f9">Warranty</th>
+            <th colspan="2" style="text-align:center;color:#c4b5fd">Internal</th>
+          </tr>
+          <tr class="sub-row">
+            <th></th>
+            <th>Projected</th><th>LY</th>
+            <th>Projected</th><th>LY</th>
+            <th>Projected</th><th>LY</th>
+          </tr>
+        </thead>
+        <tbody id="entry-tbody"></tbody>
+      </table>
+      <button class="apply-btn" onclick="applyEntries()">Apply &amp; Update Dashboard</button>
+    </div>
+  </div>
+
+  <div class="cost-center-nav">
+    <button class="cc-btn active" onclick="setCC(this,'all')">All Cost Centers</button>
+    <button class="cc-btn" onclick="setCC(this,'cp')">Customer Pay</button>
+    <button class="cc-btn" onclick="setCC(this,'warranty')">Warranty</button>
+    <button class="cc-btn" onclick="setCC(this,'internal')">Internal</button>
+  </div>
+
+  <div class="stores-grid" id="stores-grid"></div>
+
+  <div class="summary-card">
+    <div class="summary-card-header">All Stores · GP Pace Summary</div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr class="group-row">
+            <th class="left">Store</th>
+            <th>Projected</th><th>LY Actual</th><th>YoY %</th>
+            <th>CP Proj</th><th>CP YoY%</th>
+            <th>Warr Proj</th><th>Warr YoY%</th>
+            <th>Int Proj</th><th>Int YoY%</th>
+          </tr>
+        </thead>
+        <tbody id="gp-summary-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══ TAB: ADVISOR SCORECARD ══ -->
+<div class="tab-panel" id="tab-advisors">
+  <div class="panel-header">
+    <div>
+      <div class="panel-title">Service Advisor Scorecard</div>
+      <div class="panel-sub">March 2026 MTD · 17 working days</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <div class="legend">
+        <div class="legend-item"><div class="l-dot" style="background:var(--green)"></div>At / Above Goal</div>
+        <div class="legend-item"><div class="l-dot" style="background:var(--red)"></div>Below 60% of Goal</div>
+      </div>
+      <div class="period-badge">03/01 – 03/23/26</div>
+    </div>
+  </div>
+
+  <div class="filters">
+    <span class="filter-label">Store</span>
+    <button class="filter-btn active" onclick="filterStore(this,'all')">All</button>
+    <button class="filter-btn" onclick="filterStore(this,'honda')">Honda</button>
+    <button class="filter-btn" onclick="filterStore(this,'toyota')">Toyota</button>
+    <button class="filter-btn" onclick="filterStore(this,'kia')">Kia</button>
+    <button class="filter-btn" onclick="filterStore(this,'hyundai')">Laf Hyundai</button>
+    <button class="filter-btn" onclick="filterStore(this,'indy')">Indy Hyundai</button>
+  </div>
+
+  <div class="table-wrap">
+    <div class="table-scroll">
+      <table style="min-width:1050px">
+        <thead>
+          <tr class="group-row">
+            <th class="left" rowspan="2" style="min-width:160px">Advisor</th>
+            <th rowspan="2">RO Count<br><span style="font-weight:400;opacity:.65">Goal 170</span></th>
+            <th rowspan="2">RAP<br>Hrs/RO<br><span style="font-weight:400;opacity:.65">Goal 1.5</span></th>
+            <th rowspan="2">Discount<br><span style="font-weight:400;opacity:.65">Total $</span></th>
+            <th rowspan="2">ELR<br>After Disc</th>
+            <th colspan="2" class="group-divider">Alignment<br><span style="font-weight:400;opacity:.65">Goal 10%</span></th>
+            <th colspan="2" class="group-divider">Tires<br><span style="font-weight:400;opacity:.65">Goal 15%</span></th>
+            <th colspan="2" class="group-divider">Valvoline<br><span style="font-weight:400;opacity:.65">Goal 23%</span></th>
+            <th class="group-divider" rowspan="2">Email<br>Capture<br><span style="font-weight:400;opacity:.65">Goal 90%</span></th>
+            <th class="group-divider" rowspan="2">Video<br>Sent<br><span style="font-weight:400;opacity:.65">Goal 75%</span></th>
+            <th rowspan="2">Video<br>Viewed<br><span style="font-weight:400;opacity:.65">Goal 25%</span></th>
+            <th rowspan="2">Online<br>Pay %</th>
+          </tr>
+          <tr class="sub-row">
+            <th class="gdiv">Pen %</th><th>Cnt</th>
+            <th class="gdiv">Pen %</th><th>Cnt</th>
+            <th class="gdiv">Pen %</th><th>Cnt</th>
+          </tr>
+        </thead>
+        <tbody id="sa-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════
+// TAB SWITCHING
+// ══════════════════════════════════════════════════════
+function switchTab(id, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + id).classList.add('active');
+  btn.classList.add('active');
+}
+
+// ══════════════════════════════════════════════════════
+// INFINITE PURSUIT DATA
+// ══════════════════════════════════════════════════════
+const pursuitStores = [
+  { name:'Bob Rohrman Honda',    css:'honda',      points:30,  gpPct:77.7, totalYoy:-3.6,  cpYoy:-46.6, align:7.7,  valv:40.5, tires:6.6,  policy:1.2, opProfit:8.1  },
+  { name:'Bob Rohrman Toyota',   css:'toyota',     points:50,  gpPct:75.5, totalYoy:13.3,  cpYoy:4.9,   align:8.9,  valv:30.3, tires:4.5,  policy:0.8, opProfit:12.4 },
+  { name:'Bob Rohrman Kia',      css:'kia',        points:55,  gpPct:76.2, totalYoy:16.6,  cpYoy:23.2,  align:10.4, valv:31.5, tires:3.8,  policy:1.0, opProfit:10.8 },
+  { name:'Bob Rohrman Hyundai',  css:'lafhyundai', points:75,  gpPct:75.5, totalYoy:29.4,  cpYoy:9.99,  align:13.0, valv:26.5, tires:11.3, policy:0.6, opProfit:15.2 },
+  { name:'Indy Hyundai',         css:'indyhyundai',points:5,   gpPct:77.7, totalYoy:-10.1, cpYoy:-32.9, align:7.8,  valv:13.4, tires:30.5, policy:2.1, opProfit:-0.1 },
+];
+
+const STD = { gpPct:75, totalYoy:0, cpYoy:0, align:10, valv:23, tires:15, policy:3, opProfit:8 };
+
+function pursuitChip(val, goal, fmt) {
+  const ok = val >= goal;
+  return `<span class="chip ${ok?'up':'down'}">${fmt(val)}</span>`;
+}
+
+function renderPursuit() {
+  const grid = document.getElementById('pursuit-grid');
+  const tbody = document.getElementById('pursuit-tbody');
+  grid.innerHTML = '';
+  tbody.innerHTML = '';
+
+  pursuitStores.forEach(s => {
+    const pct = Math.round((s.points / 100) * 100);
+    const barColor = s.points >= 70 ? 'var(--green)' : s.points >= 40 ? 'var(--accent)' : 'var(--red)';
+    grid.innerHTML += `
+      <div class="pursuit-card ${s.css}">
+        <div class="pursuit-store">${s.name}</div>
+        <div class="pursuit-points" style="color:${s.points>=70?'var(--green)':s.points>=40?'var(--text)':'var(--red)'}">${s.points}</div>
+        <div class="pursuit-label">pursuit points <span style="color:var(--muted)">/ 100 goal</span></div>
+        <div class="pursuit-bar-track">
+          <div class="pursuit-bar-fill" style="width:${s.points}%;background:${barColor}"></div>
+        </div>
+        <div class="pursuit-metrics">
+          <div class="pm-item"><div class="pm-label">GP%</div><div class="pm-val ${s.gpPct>=STD.gpPct?'good':''}">${s.gpPct.toFixed(1)}%</div></div>
+          <div class="pm-item"><div class="pm-label">Total YoY</div><div class="pm-val ${s.totalYoy>=0?'good':'bad'}">${s.totalYoy>0?'+':''}${s.totalYoy.toFixed(1)}%</div></div>
+          <div class="pm-item"><div class="pm-label">Alignment</div><div class="pm-val ${s.align>=STD.align?'good':''}">${s.align.toFixed(1)}%</div></div>
+          <div class="pm-item"><div class="pm-label">Valvoline</div><div class="pm-val ${s.valv>=STD.valv?'good':''}">${s.valv.toFixed(1)}%</div></div>
+        </div>
+      </div>`;
+
+    const p = n => n.toFixed(1) + '%';
+    tbody.innerHTML += `<tr>
+      <td class="left"><div style="display:flex;align-items:center;gap:8px"><span class="store-dot dot-${s.css}"></span>${s.name}</div></td>
+      <td class="num"><strong style="color:${s.points>=70?'var(--green)':s.points<40?'var(--red)':'var(--text2)'}">${s.points}</strong></td>
+      <td class="num">${pursuitChip(s.gpPct, STD.gpPct, p)}</td>
+      <td class="num">${pursuitChip(s.totalYoy, 0, v=>(v>0?'+':'')+p(v))}</td>
+      <td class="num">${pursuitChip(s.cpYoy, 0, v=>(v>0?'+':'')+p(v))}</td>
+      <td class="num">${pursuitChip(s.align, STD.align, p)}</td>
+      <td class="num">${pursuitChip(s.valv, STD.valv, p)}</td>
+      <td class="num">${pursuitChip(s.tires, STD.tires, p)}</td>
+      <td class="num">${pursuitChip(s.policy, 0, v => v.toFixed(1)+'%')}</td>
+      <td class="num">${pursuitChip(s.opProfit, STD.opProfit, p)}</td>
+    </tr>`;
+  });
+}
+
+// ══════════════════════════════════════════════════════
+// GP PACE DATA
+// ══════════════════════════════════════════════════════
+let gpStores = [
+  { id:'honda',       name:'Bob Rohrman Honda',    cssClass:'honda',
+    total:195609.80,  lyTotal:194527.50,  totalYoy:0.5564,
+    cp:0, lyCp:0, warranty:0, lyWarranty:0, internal:0, lyInternal:0 },
+  { id:'toyota',      name:'Bob Rohrman Toyota',   cssClass:'toyota',
+    total:287073.62,  lyTotal:253287.65,  totalYoy:13.3390,
+    cp:0, lyCp:0, warranty:0, lyWarranty:0, internal:0, lyInternal:0 },
+  { id:'kia',         name:'Bob Rohrman Kia',      cssClass:'kia',
+    total:142174.50,  lyTotal:121986.14,  totalYoy:16.5497,
+    cp:0, lyCp:0, warranty:0, lyWarranty:0, internal:0, lyInternal:0 },
+  { id:'lafhyundai',  name:'Bob Rohrman Hyundai',  cssClass:'lafhyundai',
+    total:139042.14,  lyTotal:107470.78,  totalYoy:29.3767,
+    cp:0, lyCp:0, warranty:0, lyWarranty:0, internal:0, lyInternal:0 },
+  { id:'indyhyundai', name:'Indy Hyundai',          cssClass:'indyhyundai',
+    total:149175.25,  lyTotal:165885.28,  totalYoy:-10.0732,
+    cp:0, lyCp:0, warranty:0, lyWarranty:0, internal:0, lyInternal:0 },
+];
+
+function gpCalcYoy(c,l){return(l&&l!==0)?((c-l)/l*100):null;}
+function gpFmt$(n){return n?'$'+(n/1000).toFixed(1)+'k':'$0';}
+function gpFull$(n){return(n||n===0)?'$'+Math.round(n).toLocaleString():'—';}
+function gpPct(n){return(n!==null&&n!==undefined)?(n>0?'+':'')+n.toFixed(1)+'%':'—';}
+function gpDir(n){return(n===null||n===undefined)?'flat':n>0.5?'up':n<-0.5?'down':'flat';}
+function gpArrow(n){return(n===null||n===undefined)?'':n>0.5?'▲':n<-0.5?'▼':'';}
+
+let gpCurrentCC = 'all';
+
+function renderGPCards() {
+  const grid = document.getElementById('stores-grid');
+  grid.innerHTML = '';
+  gpStores.forEach(s => {
+    const d = gpDir(s.totalYoy);
+    const pw = Math.min(Math.abs(s.totalYoy)*3,100);
+    const varAmt = s.total - s.lyTotal;
+    const varStr = (varAmt>=0?'+':'-')+'$'+Math.abs(Math.round(varAmt)).toLocaleString();
+    grid.innerHTML += `
+      <div class="store-card ${s.cssClass}">
+        <div class="card-store-name"><span class="store-dot dot-${s.cssClass}"></span>${s.name}</div>
+        <div class="gp-total-row">
+          <div class="gp-amount">${gpFmt$(s.total)}</div>
+          <div class="gp-ly"><span>LY ${gpFull$(s.lyTotal)}</span><span style="color:${varAmt>=0?'var(--green)':'var(--red)'}">${varStr}</span></div>
+        </div>
+        <div class="yoy-badge ${d}">${gpArrow(s.totalYoy)} ${gpPct(s.totalYoy)} YoY</div>
+        <div class="pace-bar-track"><div class="pace-bar-fill ${d}" style="width:${pw}%"></div></div>
+        <div class="cc-breakdown">${renderGPCC(s)}</div>
+      </div>`;
+  });
+}
+
+function renderGPCC(s) {
+  const cpY=gpCalcYoy(s.cp,s.lyCp), wY=gpCalcYoy(s.warranty,s.lyWarranty), iY=gpCalcYoy(s.internal,s.lyInternal);
+  if(gpCurrentCC==='cp') return `<div class="cc-item" style="grid-column:1/-1;text-align:left"><div class="cc-label">Customer Pay GP</div><div class="cc-value" style="font-size:20px">${gpFull$(s.cp)}</div><div class="cc-yoy ${gpDir(cpY)}">${gpArrow(cpY)} ${gpPct(cpY)} vs LY ${gpFull$(s.lyCp)}</div></div>`;
+  if(gpCurrentCC==='warranty') return `<div class="cc-item" style="grid-column:1/-1;text-align:left"><div class="cc-label">Warranty GP</div><div class="cc-value" style="font-size:20px">${gpFull$(s.warranty)}</div><div class="cc-yoy ${gpDir(wY)}">${gpArrow(wY)} ${gpPct(wY)} vs LY ${gpFull$(s.lyWarranty)}</div></div>`;
+  if(gpCurrentCC==='internal') return `<div class="cc-item" style="grid-column:1/-1;text-align:left"><div class="cc-label">Internal GP</div><div class="cc-value" style="font-size:20px">${gpFull$(s.internal)}</div><div class="cc-yoy ${gpDir(iY)}">${gpArrow(iY)} ${gpPct(iY)} vs LY ${gpFull$(s.lyInternal)}</div></div>`;
+  return `
+    <div class="cc-item"><div class="cc-label">Cust Pay</div><div class="cc-value">${gpFmt$(s.cp)}</div><div class="cc-yoy ${gpDir(cpY)}">${gpArrow(cpY)} ${gpPct(cpY)}</div></div>
+    <div class="cc-item"><div class="cc-label">Warranty</div><div class="cc-value">${gpFmt$(s.warranty)}</div><div class="cc-yoy ${gpDir(wY)}">${gpArrow(wY)} ${gpPct(wY)}</div></div>
+    <div class="cc-item"><div class="cc-label">Internal</div><div class="cc-value">${gpFmt$(s.internal)}</div><div class="cc-yoy ${gpDir(iY)}">${gpArrow(iY)} ${gpPct(iY)}</div></div>`;
+}
+
+function setCC(btn,cc){gpCurrentCC=cc;document.querySelectorAll('.cc-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');renderGPCards();}
+
+function gpRenderTable() {
+  const tbody = document.getElementById('gp-summary-tbody');
+  let tT=0,lyT=0,tCP=0,lyCP=0,tW=0,lyW=0,tI=0,lyI=0, rows='';
+  gpStores.forEach(s=>{
+    tT+=s.total;lyT+=s.lyTotal;tCP+=s.cp;lyCP+=s.lyCp;tW+=s.warranty;lyW+=s.lyWarranty;tI+=s.internal;lyI+=s.lyInternal;
+    const cpY=gpCalcYoy(s.cp,s.lyCp),wY=gpCalcYoy(s.warranty,s.lyWarranty),iY=gpCalcYoy(s.internal,s.lyInternal);
+    rows+=`<tr>
+      <td class="left"><div style="display:flex;align-items:center;gap:8px"><span class="store-dot dot-${s.cssClass}"></span>${s.name}</div></td>
+      <td class="num">${gpFull$(s.total)}</td><td class="num" style="color:var(--muted)">${gpFull$(s.lyTotal)}</td>
+      <td class="num"><span class="chip ${gpDir(s.totalYoy)}">${gpArrow(s.totalYoy)} ${gpPct(s.totalYoy)}</span></td>
+      <td class="num">${gpFull$(s.cp)}</td><td class="num"><span class="chip ${gpDir(cpY)}">${gpArrow(cpY)} ${gpPct(cpY)}</span></td>
+      <td class="num">${gpFull$(s.warranty)}</td><td class="num"><span class="chip ${gpDir(wY)}">${gpArrow(wY)} ${gpPct(wY)}</span></td>
+      <td class="num">${gpFull$(s.internal)}</td><td class="num"><span class="chip ${gpDir(iY)}">${gpArrow(iY)} ${gpPct(iY)}</span></td>
+    </tr>`;
+  });
+  const gY=gpCalcYoy(tT,lyT),gCP=gpCalcYoy(tCP,lyCP),gW=gpCalcYoy(tW,lyW),gI=gpCalcYoy(tI,lyI);
+  rows+=`<tr class="total-row">
+    <td class="left" style="color:var(--accent);font-weight:700">GROUP TOTAL</td>
+    <td class="num">${gpFull$(tT)}</td><td class="num" style="color:var(--muted)">${gpFull$(lyT)}</td>
+    <td class="num"><span class="chip ${gpDir(gY)}">${gpArrow(gY)} ${gpPct(gY)}</span></td>
+    <td class="num">${gpFull$(tCP)}</td><td class="num"><span class="chip ${gpDir(gCP)}">${gpArrow(gCP)} ${gpPct(gCP)}</span></td>
+    <td class="num">${gpFull$(tW)}</td><td class="num"><span class="chip ${gpDir(gW)}">${gpArrow(gW)} ${gpPct(gW)}</span></td>
+    <td class="num">${gpFull$(tI)}</td><td class="num"><span class="chip ${gpDir(gI)}">${gpArrow(gI)} ${gpPct(gI)}</span></td>
+  </tr>`;
+  tbody.innerHTML = rows;
+}
+
+function buildEntryTable() {
+  const tbody = document.getElementById('entry-tbody');
+  tbody.innerHTML = '';
+  gpStores.forEach((s,i)=>{
+    tbody.innerHTML+=`<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:8px 10px;font-weight:500;white-space:nowrap"><span class="store-dot dot-${s.cssClass}" style="vertical-align:middle;margin-right:6px"></span>${s.name}</td>
+      <td style="padding:6px 8px"><input class="entry-input" id="cp_${i}"    type="number" placeholder="0" value="${s.cp||''}"></td>
+      <td style="padding:6px 8px"><input class="entry-input" id="lycp_${i}"  type="number" placeholder="0" value="${s.lyCp||''}"></td>
+      <td style="padding:6px 8px"><input class="entry-input" id="war_${i}"   type="number" placeholder="0" value="${s.warranty||''}"></td>
+      <td style="padding:6px 8px"><input class="entry-input" id="lywar_${i}" type="number" placeholder="0" value="${s.lyWarranty||''}"></td>
+      <td style="padding:6px 8px"><input class="entry-input" id="int_${i}"   type="number" placeholder="0" value="${s.internal||''}"></td>
+      <td style="padding:6px 8px"><input class="entry-input" id="lyint_${i}" type="number" placeholder="0" value="${s.lyInternal||''}"></td>
+    </tr>`;
+  });
+}
+
+function toggleEntry(){const p=document.getElementById('entry-panel');const open=p.style.display==='none';p.style.display=open?'block':'none';document.getElementById('entry-toggle-icon').textContent=open?'COLLAPSE ▲':'EXPAND ▼';}
+
+function applyEntries(){
+  gpStores.forEach((s,i)=>{
+    s.cp        =parseFloat(document.getElementById(`cp_${i}`).value)||0;
+    s.lyCp      =parseFloat(document.getElementById(`lycp_${i}`).value)||0;
+    s.warranty  =parseFloat(document.getElementById(`war_${i}`).value)||0;
+    s.lyWarranty=parseFloat(document.getElementById(`lywar_${i}`).value)||0;
+    s.internal  =parseFloat(document.getElementById(`int_${i}`).value)||0;
+    s.lyInternal=parseFloat(document.getElementById(`lyint_${i}`).value)||0;
+  });
+  renderGPCards();gpRenderTable();
+  document.getElementById('entry-panel').style.display='none';
+  document.getElementById('entry-toggle-icon').textContent='EXPAND ▼';
+}
+
+// ══════════════════════════════════════════════════════
+// SERVICE ADVISOR SCORECARD DATA
+// ══════════════════════════════════════════════════════
+const saAdvisors = [
+  { store:'Bob Rohrman Honda',    key:'honda',   name:'KAYLA MERKEL',         ro:133, disc:1799, rap:2.15, elr:153, alignPct:9.8,  alignCnt:10, tirePct:7.8,  tireCnt:8,  valvPct:49.0, valvCnt:50, email:83.5, vidSent:11.0, vidViewed:28.6, onlinePay:3.9 },
+  { store:'Bob Rohrman Honda',    key:'honda',   name:'ALEXANDRIA ARTEMIS',   ro:132, disc:1992, rap:1.83, elr:150, alignPct:7.6,  alignCnt:8,  tirePct:5.7,  tireCnt:6,  valvPct:41.0, valvCnt:43, email:87.1, vidSent:7.8,  vidViewed:20.0, onlinePay:8.6 },
+  { store:'Bob Rohrman Honda',    key:'honda',   name:'BRIAN STELLWAG',       ro:79,  disc:596,  rap:1.87, elr:155, alignPct:6.5,  alignCnt:4,  tirePct:6.5,  tireCnt:4,  valvPct:50.0, valvCnt:31, email:82.2, vidSent:3.9,  vidViewed:33.3, onlinePay:2.6 },
+  { store:'Bob Rohrman Honda',    key:'honda',   name:'ANTHONY RAMIREZ',      ro:136, disc:1411, rap:1.25, elr:144, alignPct:2.8,  alignCnt:3,  tirePct:5.6,  tireCnt:6,  valvPct:22.2, valvCnt:24, email:70.0, vidSent:11.3, vidViewed:33.3, onlinePay:0.8 },
+  { store:'Bob Rohrman Honda',    key:'honda',   name:'XION OBOMSAWIN',       ro:104, disc:197,  rap:1.22, elr:129, alignPct:13.3, alignCnt:10, tirePct:8.0,  tireCnt:6,  valvPct:46.7, valvCnt:35, email:82.6, vidSent:11.9, vidViewed:25.0, onlinePay:0.0 },
+  { store:'Bob Rohrman Toyota',   key:'toyota',  name:'OLIVER LOPEZ-MAYORGA', ro:204, disc:1324, rap:1.09, elr:141, alignPct:4.8,  alignCnt:8,  tirePct:4.8,  tireCnt:8,  valvPct:32.7, valvCnt:55, email:89.8, vidSent:52.5, vidViewed:21.1, onlinePay:2.2 },
+  { store:'Bob Rohrman Toyota',   key:'toyota',  name:'Adam Kulaga',           ro:168, disc:2421, rap:1.45, elr:144, alignPct:12.2, alignCnt:16, tirePct:3.8,  tireCnt:5,  valvPct:40.5, valvCnt:53, email:75.8, vidSent:62.1, vidViewed:23.2, onlinePay:5.2 },
+  { store:'Bob Rohrman Toyota',   key:'toyota',  name:'MATTHEW LENARDO',      ro:144, disc:1082, rap:1.66, elr:156, alignPct:8.5,  alignCnt:9,  tirePct:7.5,  tireCnt:8,  valvPct:26.4, valvCnt:28, email:79.2, vidSent:57.4, vidViewed:20.3, onlinePay:2.3 },
+  { store:'Bob Rohrman Toyota',   key:'toyota',  name:'MAX TERRY',             ro:162, disc:761,  rap:1.41, elr:153, alignPct:7.4,  alignCnt:9,  tirePct:5.0,  tireCnt:6,  valvPct:24.0, valvCnt:29, email:85.3, vidSent:58.9, vidViewed:19.3, onlinePay:1.4 },
+  { store:'Bob Rohrman Toyota',   key:'toyota',  name:'BRITTANY GERBER',      ro:150, disc:1387, rap:1.29, elr:148, alignPct:11.4, alignCnt:13, tirePct:3.5,  tireCnt:4,  valvPct:27.2, valvCnt:31, email:83.3, vidSent:63.8, vidViewed:24.4, onlinePay:0.7 },
+  { store:'Bob Rohrman Toyota',   key:'toyota',  name:'Rebeca Alvarado',      ro:101, disc:0,    rap:0.37, elr:127, alignPct:0.0,  alignCnt:0,  tirePct:0.0,  tireCnt:0,  valvPct:0.0,  valvCnt:0,  email:89.6, vidSent:73.0, vidViewed:28.8, onlinePay:0.0 },
+  { store:'Bob Rohrman Toyota',   key:'toyota',  name:'JACOB LINSON',         ro:69,  disc:715,  rap:1.47, elr:144, alignPct:13.6, alignCnt:8,  tirePct:1.7,  tireCnt:1,  valvPct:30.5, valvCnt:18, email:81.8, vidSent:64.1, vidViewed:14.6, onlinePay:0.0 },
+  { store:'Bob Rohrman Kia',      key:'kia',     name:'PHILIP DOVOLIS',       ro:157, disc:1645, rap:1.79, elr:140, alignPct:18.1, alignCnt:21, tirePct:7.8,  tireCnt:9,  valvPct:58.6, valvCnt:68, email:81.4, vidSent:17.9, vidViewed:28.0, onlinePay:3.6 },
+  { store:'Bob Rohrman Kia',      key:'kia',     name:'EVAN HANTHORNE',       ro:136, disc:994,  rap:1.10, elr:149, alignPct:6.4,  alignCnt:7,  tirePct:0.9,  tireCnt:1,  valvPct:14.7, valvCnt:16, email:88.0, vidSent:21.1, vidViewed:7.1,  onlinePay:1.5 },
+  { store:'Bob Rohrman Kia',      key:'kia',     name:'JOSH LINDSTROM',       ro:119, disc:706,  rap:1.05, elr:139, alignPct:5.6,  alignCnt:5,  tirePct:2.2,  tireCnt:2,  valvPct:17.8, valvCnt:16, email:77.2, vidSent:19.3, vidViewed:22.7, onlinePay:1.8 },
+  { store:'Bob Rohrman Hyundai',  key:'hyundai', name:'JORDAN TROXEL',        ro:173, disc:688,  rap:1.41, elr:157, alignPct:22.9, alignCnt:22, tirePct:20.8, tireCnt:20, valvPct:28.1, valvCnt:27, email:87.4, vidSent:73.9, vidViewed:25.7, onlinePay:5.6 },
+  { store:'Bob Rohrman Hyundai',  key:'hyundai', name:'DAVID RILEY',          ro:156, disc:153,  rap:1.25, elr:157, alignPct:6.7,  alignCnt:6,  tirePct:3.4,  tireCnt:3,  valvPct:29.2, valvCnt:26, email:86.6, vidSent:69.3, vidViewed:26.1, onlinePay:2.4 },
+  { store:'Bob Rohrman Hyundai',  key:'hyundai', name:'NEVEN CHASTEEN',       ro:118, disc:175,  rap:1.69, elr:157, alignPct:5.7,  alignCnt:3,  tirePct:7.5,  tireCnt:4,  valvPct:18.9, valvCnt:10, email:89.2, vidSent:59.1, vidViewed:7.7,  onlinePay:6.8 },
+  { store:'Indy Hyundai',         key:'indy',    name:'ERICK CONKLIN',        ro:148, disc:354,  rap:1.26, elr:149, alignPct:14.0, alignCnt:14, tirePct:48.0, tireCnt:48, valvPct:17.0, valvCnt:17, email:92.6, vidSent:0.0,  vidViewed:0.0,  onlinePay:5.0 },
+  { store:'Indy Hyundai',         key:'indy',    name:'Benjamin Cucio',       ro:191, disc:40,   rap:0.97, elr:117, alignPct:4.3,  alignCnt:3,  tirePct:37.7, tireCnt:26, valvPct:21.7, valvCnt:15, email:94.8, vidSent:0.0,  vidViewed:0.0,  onlinePay:4.4 },
+  { store:'Indy Hyundai',         key:'indy',    name:'NOAH WEAVER',          ro:68,  disc:39,   rap:0.91, elr:134, alignPct:10.0, alignCnt:4,  tirePct:20.0, tireCnt:8,  valvPct:10.0, valvCnt:4,  email:89.6, vidSent:0.0,  vidViewed:0.0,  onlinePay:0.0 },
+];
+
+const SA_B = { ro:170, rap:1.5, align:10, tire:15, valv:23, email:90, vidSent:75, vidViewed:25 };
+const RED_THRESHOLD = 0.60;
+
+function saCell(val, bench, fmt, extraClass='') {
+  if(val===null||val===undefined) return `<td class="num ${extraClass}"><span class="v-neu">—</span></td>`;
+  const ok  = val >= bench;
+  const bad = val < bench * RED_THRESHOLD && val > 0;
+  const cls = ok ? 'v-ok-green' : bad ? 'v-miss' : 'v-neu';
+  const dot = ok  ? '<div class="status-dot dot-green"></div>'
+            : bad ? '<div class="status-dot dot-miss"></div>' : '';
+  return `<td class="num ${extraClass}"><div class="val-wrap">${dot}<span class="${cls}">${fmt(val)}</span></div></td>`;
+}
+function saPlain(val, fmt, extraClass='') {
+  return `<td class="num ${extraClass}"><span class="v-neu">${(val!==null&&val!==undefined&&(val!==0||fmt===saP))?fmt(val):'—'}</span></td>`;
+}
+function saCnt(val, extraClass='') {
+  return `<td class="num ${extraClass}" style="color:var(--muted);font-size:11px">${val>0?val:'—'}</td>`;
+}
+function saRoCell(ro) {
+  const ok = ro >= SA_B.ro;
+  const cls = ok ? 'v-ok-green' : 'v-neu';
+  const dot = ok ? '<div class="status-dot dot-green"></div>' : '';
+  return `<td class="num"><div class="val-wrap">${dot}<span class="${cls}" style="font-size:13px;font-weight:600">${ro}</span></div></td>`;
+}
+const saP   = v => v.toFixed(1)+'%';
+const saDlr = v => '$'+Math.round(v).toLocaleString();
+const saDec = v => v.toFixed(2);
+
+let saFilter = 'all';
+
+function saRenderTable() {
+  const tbody = document.getElementById('sa-tbody');
+  const stores = [...new Set(saAdvisors.map(a=>a.store))];
+  let html = '';
+  stores.forEach(store => {
+    const rows = saAdvisors.filter(a=>a.store===store);
+    if(saFilter!=='all' && !rows[0].key.includes(saFilter)) return;
+    html += `<tr class="store-hdr"><td colspan="16">${store}</td></tr>`;
+    rows.forEach(a => {
+      html += `<tr>
+        <td class="left"><span class="adv-name">${a.name}</span></td>
+        ${saRoCell(a.ro)}
+        ${saCell(a.rap,       SA_B.rap,      saDec)}
+        ${saPlain(a.disc,     saDlr)}
+        ${saPlain(a.elr>0?a.elr:null, v=>'$'+Math.round(v))}
+        ${saCell(a.alignPct,  SA_B.align,    saP, 'gdiv')}
+        ${saCnt(a.alignCnt)}
+        ${saCell(a.tirePct,   SA_B.tire,     saP, 'gdiv')}
+        ${saCnt(a.tireCnt)}
+        ${saCell(a.valvPct,   SA_B.valv,     saP, 'gdiv')}
+        ${saCnt(a.valvCnt)}
+        ${saCell(a.email,     SA_B.email,    saP, 'gdiv')}
+        ${saCell(a.vidSent,   SA_B.vidSent,  saP, 'gdiv')}
+        ${saCell(a.vidViewed, SA_B.vidViewed,saP)}
+        ${saPlain(a.onlinePay, saP)}
+      </tr>`;
+    });
+    const n=rows.length;
+    const sum=k=>rows.reduce((s,a)=>s+(a[k]||0),0);
+    const avg=k=>sum(k)/n;
+    html+=`<tr class="store-total">
+      <td>Store Avg / Total</td>
+      <td class="num">${sum('ro')} ROs</td>
+      <td class="num">${avg('rap').toFixed(2)}</td>
+      <td class="num">$${sum('disc').toLocaleString()}</td>
+      <td class="num">$${Math.round(avg('elr'))}</td>
+      <td class="num gdiv">${avg('alignPct').toFixed(1)}%</td><td class="num">${sum('alignCnt')}</td>
+      <td class="num gdiv">${avg('tirePct').toFixed(1)}%</td><td class="num">${sum('tireCnt')}</td>
+      <td class="num gdiv">${avg('valvPct').toFixed(1)}%</td><td class="num">${sum('valvCnt')}</td>
+      <td class="num gdiv">${avg('email').toFixed(1)}%</td>
+      <td class="num gdiv">${avg('vidSent').toFixed(1)}%</td>
+      <td class="num">${avg('vidViewed').toFixed(1)}%</td>
+      <td class="num">${avg('onlinePay').toFixed(1)}%</td>
+    </tr>`;
+  });
+  tbody.innerHTML = html;
+}
+
+function filterStore(btn, key) {
+  saFilter = key;
+  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  saRenderTable();
+}
+
+// ══════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════
+renderPursuit();
+buildEntryTable();
+renderGPCards();
+gpRenderTable();
+saRenderTable();
+</script>
+</body>
+</html>
