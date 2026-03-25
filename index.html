@@ -717,6 +717,14 @@ function parseTech(wb, filename) {
 </head>
 <body>
 
+<!-- Hidden file inputs at body level — must be outside tab panels for .click() to work -->
+<input type="file" id="fi-pursuit" accept=".pdf"       style="display:none" onchange="dzFile(event,'pursuit')">
+<input type="file" id="fi-wip"     accept=".xlsx,.xls" style="display:none" onchange="dzFile(event,'wip')">
+<input type="file" id="fi-gp"      accept=".xlsx,.xls" style="display:none" onchange="dzFile(event,'gp')">
+<input type="file" id="fi-sa"      accept=".xlsx,.xls" style="display:none" onchange="dzFile(event,'sa')">
+<input type="file" id="fi-email"   accept=".xlsx,.xls" style="display:none" onchange="dzFile(event,'email')">
+<input type="file" id="fi-tech"    accept=".xlsx,.xls" style="display:none" onchange="dzFile(event,'tech')">
+
 <!-- ══ GLOBAL HEADER ══ -->
 <div class="global-header">
   <div class="header-brand">
@@ -1488,13 +1496,7 @@ renderLeaderboard();
     <div class="period-badge">Auto-refreshes all tabs</div>
   </div>
 
-  <!-- Hidden file inputs — triggered by buttons below -->
-  <input type="file" id="fi-pursuit" accept=".pdf" style="display:none" onchange="dzFile(event,'pursuit')">
-  <input type="file" id="fi-wip"   accept=".xlsx,.xls" style="display:none" onchange="dzFile(event,'wip')">
-  <input type="file" id="fi-gp"    accept=".xlsx,.xls" style="display:none" onchange="dzFile(event,'gp')">
-  <input type="file" id="fi-sa"    accept=".xlsx,.xls" style="display:none" onchange="dzFile(event,'sa')">
-  <input type="file" id="fi-email" accept=".xlsx,.xls" style="display:none" onchange="dzFile(event,'email')">
-  <input type="file" id="fi-tech"  accept=".xlsx,.xls" style="display:none" onchange="dzFile(event,'tech')">
+
 
   <div class="upload-grid">
 
@@ -1504,7 +1506,7 @@ renderLeaderboard();
       <div class="drop-title">GP Group Totals</div>
       <div class="drop-filename">TOTAL_GROUP_GROSS_REVIEW.xlsx</div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:12px">Updates GP Pace projected & LY totals</div>
-      <button onclick="document.getElementById('fi-gp').click()" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Choose File</button>
+      <label for="fi-gp" style="display:inline-block;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Choose File</label>
       <div class="drop-status" id="dz-gp-status"></div>
     </div>
 
@@ -1514,7 +1516,7 @@ renderLeaderboard();
       <div class="drop-title">SA Totals Report</div>
       <div class="drop-filename">TOTAL_SA_TOTALS_*.xlsx</div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:12px">Updates advisor scorecard & leaderboard</div>
-      <button onclick="document.getElementById('fi-sa').click()" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Choose File</button>
+      <label for="fi-sa" style="display:inline-block;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Choose File</label>
       <div class="drop-status" id="dz-sa-status"></div>
     </div>
 
@@ -1524,7 +1526,7 @@ renderLeaderboard();
       <div class="drop-title">Email Capture List</div>
       <div class="drop-filename">Customer_Email_List.xlsx</div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:12px">Updates email capture % per advisor</div>
-      <button onclick="document.getElementById('fi-email').click()" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Choose File</button>
+      <label for="fi-email" style="display:inline-block;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Choose File</label>
       <div class="drop-status" id="dz-email-status"></div>
     </div>
 
@@ -1534,7 +1536,7 @@ renderLeaderboard();
       <div class="drop-title">Infinite Pursuit Report</div>
       <div class="drop-filename">2026_ESTIMATED_PURSUIT_*.pdf</div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:12px">Updates pursuit points & all metrics</div>
-      <button onclick="document.getElementById('fi-pursuit').click()" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Choose File</button>
+      <label for="fi-pursuit" style="display:inline-block;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Choose File</label>
       <div class="drop-status" id="dz-pursuit-status"></div>
     </div>
 
@@ -1544,7 +1546,7 @@ renderLeaderboard();
       <div class="drop-title">Work In Process</div>
       <div class="drop-filename">WORK_IN_PROCESS_*.xlsx</div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:12px">Updates Open ROs & Over 30 per store</div>
-      <button onclick="document.getElementById('fi-wip').click()" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Choose File</button>
+      <label for="fi-wip" style="display:inline-block;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Choose File</label>
       <div class="drop-status" id="dz-wip-status"></div>
     </div>
 
@@ -1554,7 +1556,7 @@ renderLeaderboard();
       <div class="drop-title">Advisor Technology</div>
       <div class="drop-filename">ADVISOR_TECHNOLOGY.xlsx</div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:12px">Updates video sent/viewed & online pay %</div>
-      <button onclick="document.getElementById('fi-tech').click()" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Choose File</button>
+      <label for="fi-tech" style="display:inline-block;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Choose File</label>
       <div class="drop-status" id="dz-tech-status"></div>
     </div>
 
