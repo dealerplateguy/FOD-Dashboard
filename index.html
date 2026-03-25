@@ -1531,15 +1531,18 @@ function renderLeaderboard() {
     const sc = storeColor[a.key] || '#64748b';
     const rowBg = rank === 1 ? 'background:#fffbeb' : rank === 2 ? 'background:#f8fafc' : rank === 3 ? 'background:#fdf8f3' : '';
 
+    const totalHrs = ((a.cpHrs || 0) + (a.warrHrs || 0));
+    const totalHrsDisplay = totalHrs > 0 ? totalHrs.toFixed(1) : '—';
     tbody.innerHTML += `<tr style="${rowBg}">
       <td style="text-align:center;font-size:${isTop3?'16px':'12px'};font-weight:700;color:var(--text2)">${rankDisplay}</td>
-      <td class="left"><span style="font-weight:600;color:var(--text)">${a.name}</span></td>
-      <td class="num"><span style="font-size:10px;font-weight:600;color:${sc};background:${sc}15;padding:2px 8px;border-radius:4px">${storeShort[a.store]||a.store}</span></td>
-      <td class="num" style="font-weight:600">${a.rap.toFixed(2)}</td>
-      <td class="num"><strong style="font-size:14px;color:${isTop3?podiumColors[rank-1]:'var(--text)'}">${a.combined}</strong></td>
-      <td class="num"><span style="font-weight:600;color:var(--green)">${a.alignCnt}</span> <span style="color:var(--muted);font-size:10px">/ ${a.alignPct.toFixed(1)}%</span></td>
-      <td class="num"><span style="font-weight:600;color:var(--accent)">${a.tireCnt}</span> <span style="color:var(--muted);font-size:10px">/ ${a.tirePct.toFixed(1)}%</span></td>
-      <td class="num"><span style="font-weight:600;color:#7c3aed">${a.valvCnt}</span> <span style="color:var(--muted);font-size:10px">/ ${a.valvPct.toFixed(1)}%</span></td>
+      <td style="text-align:left"><span style="font-weight:600;color:var(--text)">${a.name}</span></td>
+      <td style="text-align:center"><span style="font-size:10px;font-weight:600;color:${sc};background:${sc}15;padding:2px 8px;border-radius:4px">${storeShort[a.store]||a.store}</span></td>
+      <td style="text-align:center;font-weight:600">${totalHrsDisplay}</td>
+      <td style="text-align:center;font-weight:600">${a.rap.toFixed(2)}</td>
+      <td style="text-align:center"><strong style="font-size:14px;color:${isTop3?podiumColors[rank-1]:'var(--text)'}">${a.combined}</strong></td>
+      <td style="text-align:center"><span style="font-weight:600;color:var(--green)">${a.alignCnt}</span> <span style="color:var(--muted);font-size:10px">/ ${a.alignPct.toFixed(1)}%</span></td>
+      <td style="text-align:center"><span style="font-weight:600;color:var(--accent)">${a.tireCnt}</span> <span style="color:var(--muted);font-size:10px">/ ${a.tirePct.toFixed(1)}%</span></td>
+      <td style="text-align:center"><span style="font-weight:600;color:#7c3aed">${a.valvCnt}</span> <span style="color:var(--muted);font-size:10px">/ ${a.valvPct.toFixed(1)}%</span></td>
     </tr>`;
   });
 }
@@ -1711,12 +1714,13 @@ window.addEventListener('DOMContentLoaded', initDashboard);
   <div class="summary-card">
     <div class="summary-card-header" id="lb-table-header">Top 10 · Combined Service Menu Count</div>
     <div class="table-scroll">
-      <table>
+      <table style="text-align:center">
         <thead>
           <tr class="group-row">
             <th style="width:44px;text-align:center">Rank</th>
-            <th class="left">Advisor</th>
+            <th style="text-align:left">Advisor</th>
             <th>Store</th>
+            <th>Total<br>Hrs</th>
             <th>Hrs/RO</th>
             <th>Combined</th>
             <th>Alignment</th>
