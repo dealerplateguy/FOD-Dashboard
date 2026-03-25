@@ -395,6 +395,15 @@ function parseTech(wb, filename) {
   upLog(`Tech: updated ${updated} advisors from ${filename}`, 'ok');
 }
 
+// Expose parse functions globally so the second script block can call them
+window.parseGP = parseGP;
+window.parseSA = parseSA;
+window.parseEmail = parseEmail;
+window.parseWIP = parseWIP;
+window.parseTech = parseTech;
+window.parsePursuit = parsePursuit;
+window.parseFile = parseFile;
+
 </script>
 <style>
   /* ── SHARED VARIABLES ── */
