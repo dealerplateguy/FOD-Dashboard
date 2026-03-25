@@ -84,11 +84,18 @@ function parseGP(wb, filename) {
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
   let updated = 0;
 
-  rows.forEach(row => {
-    const dealerId = Number(row[0]);
-    if (!ROHRMAN_IDS.includes(dealerId)) return;
-    const proj  = Number(row[6])  || 0;
-    const ly    = Number(row[4])  || 0;
+  // Each store has 2 rows: S row (with dealer ID in col0) then G row (with GP totals)
+  // We need the G row: col4=LY, col8=Projected
+  for (let i = 0; i < rows.length - 1; i++) {
+    const dealerId = Number(rows[i][0]);
+    if (!ROHRMAN_IDS.includes(dealerId)) continue;
+    
+    // Check if next row is the G row
+    const gRow = rows[i + 1];
+    if (String(gRow[3]).trim().toUpperCase() !== 'G') continue;
+
+    const ly   = Number(gRow[4]) || 0;   // col 4 = Last Year
+    const proj = Number(gRow[8]) || 0;    // col 8 = Projected
 
     const store = gpStores.find(s => {
       const idMap = { honda:1712, toyota:1713, kia:1714, lafhyundai:1715, indyhyundai:1718 };
@@ -97,20 +104,20 @@ function parseGP(wb, filename) {
     if (store && proj > 0) {
       store.total    = proj;
       store.lyTotal  = ly;
-      // Always compute YoY dynamically — never trust the spreadsheet column
       store.totalYoy = (ly && ly !== 0) ? ((proj - ly) / ly * 100) : 0;
       updated++;
+      upLog('GP: ' + store.name + ' → Proj $' + Math.round(proj).toLocaleString() + ' LY $' + Math.round(ly).toLocaleString() + ' YoY ' + store.totalYoy.toFixed(1) + '%', 'ok');
     }
-  });
+  }
 
   if (updated > 0) {
     renderGPCards();
     gpRenderTable();
-    upStatus('gp', `✓ Updated ${updated} stores`, 'ok');
-    upLog(`GP Totals: updated ${updated} stores from ${filename}`, 'ok');
+    upStatus('gp', '✓ Updated ' + updated + ' stores', 'ok');
+    upLog('GP Totals: updated ' + updated + ' stores from ' + filename, 'ok');
   } else {
     upStatus('gp', '⚠ No matching stores found', 'err');
-    upLog(`GP Totals: no Rohrman stores found in ${filename}`, 'err');
+    upLog('GP Totals: no Rohrman stores found in ' + filename, 'err');
   }
 }
 
@@ -1057,19 +1064,19 @@ function renderPursuit() {
 // ══════════════════════════════════════════════════════
 let gpStores = [
   { id:'honda',       name:'Bob Rohrman Honda',    cssClass:'honda',
-    total:195609.80,  lyTotal:194527.50,
+    total:192877.70,  lyTotal:194527.50,
     cp:118381, lyCp:81880, warranty:24343, lyWarranty:56376, internal:51754, lyInternal:52694 },
   { id:'toyota',      name:'Bob Rohrman Toyota',   cssClass:'toyota',
-    total:287073.62,  lyTotal:253287.65,
+    total:289328.79,  lyTotal:253287.65,
     cp:155891, lyCp:147362, warranty:59905, lyWarranty:48302, internal:78118, lyInternal:58799 },
   { id:'kia',         name:'Bob Rohrman Kia',      cssClass:'kia',
-    total:142174.50,  lyTotal:121986.14,
+    total:147916.96,  lyTotal:121986.14,
     cp:66326, lyCp:53282, warranty:39594, lyWarranty:28805, internal:44821, lyInternal:45960 },
   { id:'lafhyundai',  name:'Bob Rohrman Hyundai',  cssClass:'lafhyundai',
-    total:139042.14,  lyTotal:107470.78,
+    total:137852.30,  lyTotal:107470.78,
     cp:56795, lyCp:53186, warranty:48867, lyWarranty:28849, internal:37525, lyInternal:28316 },
   { id:'indyhyundai', name:'Indy Hyundai',          cssClass:'indyhyundai',
-    total:149175.25,  lyTotal:165885.28,
+    total:149390.51,  lyTotal:165885.28,
     cp:38566, lyCp:59726, warranty:39613, lyWarranty:35541, internal:69265, lyInternal:76255 },
 ];
 // Always compute totalYoy dynamically
