@@ -492,22 +492,8 @@ function parseTech(wb, filename) {
   }
 
   /* ── TAB PANELS ── */
-  .tab-panel { 
-    display: block;
-    padding: 24px; 
-    position: absolute;
-    left: -9999px;
-    top: -9999px;
-    visibility: hidden;
-    pointer-events: none;
-  }
-  .tab-panel.active { 
-    position: static;
-    left: auto;
-    top: auto;
-    visibility: visible;
-    pointer-events: auto;
-  }
+  .tab-panel { display: none; padding: 24px; }
+  .tab-panel.active { display: block; }
 
   /* ── PANEL SECTION HEADER ── */
   .panel-header {
@@ -643,7 +629,7 @@ function parseTech(wb, filename) {
     .header-right-info { display: none !important; }
 
     /* Show ALL panels stacked */
-    .tab-panel { display: block !important; padding: 0 14px 20px; position: static !important; left: auto !important; top: auto !important; visibility: visible !important; pointer-events: auto !important; }
+    .tab-panel { display: block !important; padding: 0 14px 20px; }
 
     /* Section breaks between panels */
     #tab-gppace  { border-top: 2px solid #e2e6ed; padding-top: 16px; }
@@ -944,9 +930,14 @@ function parseTech(wb, filename) {
 // TAB SWITCHING
 // ══════════════════════════════════════════════════════
 function switchTab(id, btn) {
-  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => {
+    p.classList.remove('active');
+    p.style.display = 'none';
+  });
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById('tab-' + id).classList.add('active');
+  const panel = document.getElementById('tab-' + id);
+  panel.classList.add('active');
+  panel.style.display = 'block';
   btn.classList.add('active');
 }
 
@@ -978,17 +969,15 @@ function pmVal(val, goal) {
 
 function renderPursuit() {
   const grid = document.getElementById('pursuit-grid');
-  if (!grid) return;
   const tbody = document.getElementById('pursuit-tbody');
-  if (!tbody) return;
-  if (grid) grid.innerHTML = '';
-  if (tbody) tbody.innerHTML = '';
+  grid.innerHTML = '';
+  tbody.innerHTML = '';
 
   pursuitStores.forEach(s => {
     const GOAL = 70;
     const barColor = s.points >= GOAL ? 'var(--green)' : 'var(--red)';
     const ptColor  = s.points >= GOAL ? 'var(--green)' : 'var(--red)';
-    if (grid) grid.innerHTML += `
+    grid.innerHTML += `
       <div class="pursuit-card">
         <div class="pursuit-store">${s.name}</div>
         <div class="pursuit-points" style="color:${ptColor}">${s.points}</div>
@@ -1008,7 +997,7 @@ function renderPursuit() {
     // Table: red dot on miss only
     const rDot = (v, g) => v < g ? '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--red);margin-right:4px;vertical-align:middle"></span>' : '';
     const rCell = (v, g, fmt) => `<td class="num"><div class="val-wrap">${rDot(v,g)}<span style="color:${v<g?'var(--red)':'var(--text2)'};${v<g?'font-weight:600':''}">${fmt(v)}</span></div></td>`;
-    if (tbody) tbody.innerHTML += `<tr>
+    tbody.innerHTML += `<tr>
       <td class="left">${s.name}</td>
       <td class="num"><strong style="color:${s.points>=70?'var(--green)':'var(--red)'}">${s.points}</strong></td>
       ${rCell(s.gpPct,    STD.gpPct,    p)}
@@ -1055,14 +1044,13 @@ let gpCurrentCC = 'all';
 
 function renderGPCards() {
   const grid = document.getElementById('stores-grid');
-  if (!grid) return;
-  if (grid) grid.innerHTML = '';
+  grid.innerHTML = '';
   gpStores.forEach(s => {
     const d = gpDir(s.totalYoy);
     const pw = Math.min(Math.abs(s.totalYoy)*3,100);
     const varAmt = s.total - s.lyTotal;
     const varStr = (varAmt>=0?'+':'-')+'$'+Math.abs(Math.round(varAmt)).toLocaleString();
-    if (grid) grid.innerHTML += `
+    grid.innerHTML += `
       <div class="store-card ${s.cssClass}">
         <div class="card-store-name"><span class="store-dot dot-${s.cssClass}"></span>${s.name}</div>
         <div class="gp-total-row">
@@ -1091,7 +1079,6 @@ function setCC(btn,cc){gpCurrentCC=cc;document.querySelectorAll('.cc-btn').forEa
 
 function gpRenderTable() {
   const tbody = document.getElementById('gp-summary-tbody');
-  if (!tbody) return;
   let tT=0,lyT=0,tCP=0,lyCP=0,tW=0,lyW=0,tI=0,lyI=0, rows='';
   gpStores.forEach(s=>{
     tT+=s.total;lyT+=s.lyTotal;tCP+=s.cp;lyCP+=s.lyCp;tW+=s.warranty;lyW+=s.lyWarranty;tI+=s.internal;lyI+=s.lyInternal;
@@ -1114,15 +1101,14 @@ function gpRenderTable() {
     <td class="num">${gpFull$(tW)}</td><td class="num"><span class="chip ${gpDir(gW)}">${gpArrow(gW)} ${gpPct(gW)}</span></td>
     <td class="num">${gpFull$(tI)}</td><td class="num"><span class="chip ${gpDir(gI)}">${gpArrow(gI)} ${gpPct(gI)}</span></td>
   </tr>`;
-  if (tbody) tbody.innerHTML = rows;
+  tbody.innerHTML = rows;
 }
 
 function buildEntryTable() {
   const tbody = document.getElementById('entry-tbody');
-  if (!tbody) return;
-  if (tbody) tbody.innerHTML = '';
+  tbody.innerHTML = '';
   gpStores.forEach((s,i)=>{
-    if (tbody) tbody.innerHTML+=`<tr style="border-bottom:1px solid var(--border)">
+    tbody.innerHTML+=`<tr style="border-bottom:1px solid var(--border)">
       <td style="padding:8px 10px;font-weight:500;white-space:nowrap"><span class="store-dot dot-${s.cssClass}" style="vertical-align:middle;margin-right:6px"></span>${s.name}</td>
       <td style="padding:6px 8px"><input class="entry-input" id="cp_${i}"    type="number" placeholder="0" value="${s.cp||''}"></td>
       <td style="padding:6px 8px"><input class="entry-input" id="lycp_${i}"  type="number" placeholder="0" value="${s.lyCp||''}"></td>
@@ -1134,7 +1120,7 @@ function buildEntryTable() {
   });
 }
 
-function toggleEntry(){const p=document.getElementById('entry-panel');const open=p.style.display==='none';p.style.display=open?'block':'none';(document.getElementById('entry-toggle-icon')||{})['textContent']=open?'COLLAPSE ▲':'EXPAND ▼';}
+function toggleEntry(){const p=document.getElementById('entry-panel');const open=p.style.display==='none';p.style.display=open?'block':'none';document.getElementById('entry-toggle-icon').textContent=open?'COLLAPSE ▲':'EXPAND ▼';}
 
 function applyEntries(){
   gpStores.forEach((s,i)=>{
@@ -1147,7 +1133,7 @@ function applyEntries(){
   });
   renderGPCards();gpRenderTable();
   document.getElementById('entry-panel').style.display='none';
-  (document.getElementById('entry-toggle-icon')||{})['textContent']='EXPAND ▼';
+  document.getElementById('entry-toggle-icon').textContent='EXPAND ▼';
 }
 
 // ══════════════════════════════════════════════════════
@@ -1209,7 +1195,6 @@ let saFilter = 'all';
 
 function saRenderTable() {
   const tbody = document.getElementById('sa-tbody');
-  if (!tbody) return;
   const stores = [...new Set(saAdvisors.map(a=>a.store))];
   let html = '';
   stores.forEach(store => {
@@ -1255,7 +1240,7 @@ function saRenderTable() {
       <td class="num">${avg('onlinePay').toFixed(1)}%</td>
     </tr>`;
   });
-  if (tbody) tbody.innerHTML = html;
+  tbody.innerHTML = html;
 }
 
 function filterStore(btn, key) {
@@ -1314,13 +1299,12 @@ function renderLeaderboard() {
 
   // Podium — top 3
   const podium = document.getElementById('lb-podium');
-  if (!podium) return;
   const top3 = sorted.slice(0,3);
   // Reorder for visual: 2nd | 1st | 3rd
   const order = top3.length >= 3 ? [top3[1], top3[0], top3[2]] : top3.length === 2 ? [top3[1], top3[0]] : top3;
   const orderRanks = top3.length >= 3 ? [2,1,3] : top3.length === 2 ? [2,1] : [1];
 
-  if (podium) podium.innerHTML = '';
+  podium.innerHTML = '';
   order.forEach((a, oi) => {
     if (!a) return;
     const rank = orderRanks[oi];
@@ -1328,7 +1312,7 @@ function renderLeaderboard() {
     const h    = podiumHeights[rank-1];
     const mc   = podiumColors[rank-1];
     const sc   = storeColor[a.key] || '#64748b';
-    if (podium) podium.innerHTML += `
+    podium.innerHTML += `
       <div style="display:flex;flex-direction:column;align-items:center;gap:0;flex:1;max-width:180px">
         <div style="font-size:${rank===1?'28px':'22px'}">${medals[rank-1]}</div>
         <div style="font-weight:700;font-size:${rank===1?'13px':'12px'};text-align:center;margin:6px 0 2px;color:var(--text)">${a.name}</div>
@@ -1343,8 +1327,7 @@ function renderLeaderboard() {
 
   // Full table
   const tbody = document.getElementById('lb-tbody');
-  if (!tbody) return;
-  if (tbody) tbody.innerHTML = '';
+  tbody.innerHTML = '';
   sorted.forEach((a, idx) => {
     const rank = idx + 1;
     const val  = lbSortKey(a);
@@ -1353,7 +1336,7 @@ function renderLeaderboard() {
     const sc = storeColor[a.key] || '#64748b';
     const rowBg = rank === 1 ? 'background:#fffbeb' : rank === 2 ? 'background:#f8fafc' : rank === 3 ? 'background:#fdf8f3' : '';
 
-    if (tbody) tbody.innerHTML += `<tr style="${rowBg}">
+    tbody.innerHTML += `<tr style="${rowBg}">
       <td style="text-align:center;font-size:${isTop3?'16px':'12px'};font-weight:700;color:var(--text2)">${rankDisplay}</td>
       <td class="left"><span style="font-weight:600;color:var(--text)">${a.name}</span></td>
       <td class="num"><span style="font-size:10px;font-weight:600;color:${sc};background:${sc}15;padding:2px 8px;border-radius:4px">${storeShort[a.store]||a.store}</span></td>
@@ -1380,7 +1363,6 @@ function lbFilter(btn, mode) {
 // ══════════════════════════════════════════════════════
 function buildPursuitEntry() {
   const tbody = document.getElementById('pursuit-entry-tbody');
-  if (!tbody) return;
   const inStyle = 'background:var(--surface);border:1px solid var(--border2);border-radius:4px;padding:4px 6px;color:var(--text);font-family:"DM Mono",monospace;font-size:12px;width:72px;text-align:right';
   tbody.innerHTML = '';
   pursuitStores.forEach((s, i) => {
@@ -1424,15 +1406,29 @@ function applyPursuit() {
 }
 
 // ══════════════════════════════════════════════════════
-// INIT
+// INIT — run after full page load so all DOM elements exist
 // ══════════════════════════════════════════════════════
-renderPursuit();
-buildPursuitEntry();
-buildEntryTable();
-renderGPCards();
-gpRenderTable();
-saRenderTable();
-renderLeaderboard();
+function initDashboard() {
+  // Temporarily show all panels so getElementById works, then hide them
+  document.querySelectorAll('.tab-panel').forEach(p => {
+    p.style.display = 'block';
+  });
+
+  renderPursuit();
+  buildPursuitEntry();
+  buildEntryTable();
+  renderGPCards();
+  gpRenderTable();
+  saRenderTable();
+  renderLeaderboard();
+
+  // Restore display state — only active panel visible
+  document.querySelectorAll('.tab-panel').forEach(p => {
+    p.style.display = p.classList.contains('active') ? 'block' : 'none';
+  });
+}
+
+window.addEventListener('DOMContentLoaded', initDashboard);
 </script>
 
 <!-- ══ TAB: LEADERBOARD ══ -->
