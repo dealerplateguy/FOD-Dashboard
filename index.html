@@ -87,11 +87,8 @@ function parseGP(wb, filename) {
   rows.forEach(row => {
     const dealerId = Number(row[0]);
     if (!ROHRMAN_IDS.includes(dealerId)) return;
-    // Row structure: col0=dealer id, col6=projected total labor, col8=projected total YoY%
-    // G row (index 26 = 'G' days) — col4=LY total, col6=projected, col8=YoY pct
     const proj  = Number(row[6])  || 0;
     const ly    = Number(row[4])  || 0;
-    const yoy   = Number(row[8])  || 0;
 
     const store = gpStores.find(s => {
       const idMap = { honda:1712, toyota:1713, kia:1714, lafhyundai:1715, indyhyundai:1718 };
@@ -100,7 +97,8 @@ function parseGP(wb, filename) {
     if (store && proj > 0) {
       store.total    = proj;
       store.lyTotal  = ly;
-      store.totalYoy = yoy * 100;
+      // Always compute YoY dynamically — never trust the spreadsheet column
+      store.totalYoy = (ly && ly !== 0) ? ((proj - ly) / ly * 100) : 0;
       updated++;
     }
   });
@@ -916,6 +914,24 @@ window.parseFile = parseFile;
     <button class="filter-btn" onclick="filterStore(this,'kia')">Kia</button>
     <button class="filter-btn" onclick="filterStore(this,'hyundai')">Laf Hyundai</button>
     <button class="filter-btn" onclick="filterStore(this,'indy')">Indy Hyundai</button>
+    <span style="margin-left:auto"></span>
+    <button class="filter-btn" onclick="toggleAdvisorMgr()" style="background:#1e293b;color:#fff;border-color:#1e293b" id="btn-manage-advisors">⚙ Manage Advisors</button>
+  </div>
+
+  <!-- Advisor Management Panel -->
+  <div id="advisor-mgr-panel" style="display:none;margin-bottom:16px">
+    <div class="summary-card" style="padding:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div style="font-weight:700;font-size:13px;color:var(--text)">Select Active Advisors</div>
+        <div style="display:flex;gap:8px">
+          <button onclick="advisorMgrSelectAll(true)" style="font-size:11px;padding:4px 12px;border:1px solid var(--border2);border-radius:4px;background:var(--surface);cursor:pointer;font-weight:600;color:var(--green)">✓ Select All</button>
+          <button onclick="advisorMgrSelectAll(false)" style="font-size:11px;padding:4px 12px;border:1px solid var(--border2);border-radius:4px;background:var(--surface);cursor:pointer;font-weight:600;color:var(--red)">✗ Deselect All</button>
+          <button onclick="saveAdvisorSelections()" style="font-size:11px;padding:6px 16px;border:none;border-radius:4px;background:var(--accent);color:#fff;cursor:pointer;font-weight:700">Save &amp; Apply</button>
+        </div>
+      </div>
+      <div id="advisor-mgr-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:4px"></div>
+      <div style="font-size:10px;color:var(--muted);margin-top:10px">Deselected advisors are hidden from the Scorecard and Leaderboard. Changes are saved to your browser.</div>
+    </div>
   </div>
 
   <div class="table-wrap">
@@ -1041,21 +1057,23 @@ function renderPursuit() {
 // ══════════════════════════════════════════════════════
 let gpStores = [
   { id:'honda',       name:'Bob Rohrman Honda',    cssClass:'honda',
-    total:195609.80,  lyTotal:194527.50,  totalYoy:0.5564,
+    total:195609.80,  lyTotal:194527.50,
     cp:118381, lyCp:81880, warranty:24343, lyWarranty:56376, internal:51754, lyInternal:52694 },
   { id:'toyota',      name:'Bob Rohrman Toyota',   cssClass:'toyota',
-    total:287073.62,  lyTotal:253287.65,  totalYoy:13.3390,
+    total:287073.62,  lyTotal:253287.65,
     cp:155891, lyCp:147362, warranty:59905, lyWarranty:48302, internal:78118, lyInternal:58799 },
   { id:'kia',         name:'Bob Rohrman Kia',      cssClass:'kia',
-    total:142174.50,  lyTotal:121986.14,  totalYoy:16.5497,
+    total:142174.50,  lyTotal:121986.14,
     cp:66326, lyCp:53282, warranty:39594, lyWarranty:28805, internal:44821, lyInternal:45960 },
   { id:'lafhyundai',  name:'Bob Rohrman Hyundai',  cssClass:'lafhyundai',
-    total:139042.14,  lyTotal:107470.78,  totalYoy:29.3767,
+    total:139042.14,  lyTotal:107470.78,
     cp:56795, lyCp:53186, warranty:48867, lyWarranty:28849, internal:37525, lyInternal:28316 },
   { id:'indyhyundai', name:'Indy Hyundai',          cssClass:'indyhyundai',
-    total:149175.25,  lyTotal:165885.28,  totalYoy:-10.0732,
+    total:149175.25,  lyTotal:165885.28,
     cp:38566, lyCp:59726, warranty:39613, lyWarranty:35541, internal:69265, lyInternal:76255 },
 ];
+// Always compute totalYoy dynamically
+gpStores.forEach(s => { s.totalYoy = gpCalcYoy(s.total, s.lyTotal); });
 
 function gpCalcYoy(c,l){return(l&&l!==0)?((c-l)/l*100):null;}
 function gpFmt$(n){return n?'$'+(n/1000).toFixed(1)+'k':'$0';}
@@ -1226,10 +1244,12 @@ let saFilter = 'all';
 
 function saRenderTable() {
   const tbody = document.getElementById('sa-tbody');
-  const stores = [...new Set(saAdvisors.map(a=>a.store))];
+  const active = getActiveAdvisors();
+  const stores = [...new Set(active.map(a=>a.store))];
   let html = '';
   stores.forEach(store => {
-    const rows = saAdvisors.filter(a=>a.store===store);
+    const rows = active.filter(a=>a.store===store);
+    if(rows.length === 0) return;
     if(saFilter!=='all' && !rows[0].key.includes(saFilter)) return;
     html += `<tr class="store-hdr"><td colspan="17">${store}</td></tr>`;
     rows.forEach(a => {
@@ -1282,15 +1302,79 @@ function filterStore(btn, key) {
 }
 
 // ══════════════════════════════════════════════════════
+// ADVISOR MANAGEMENT (select/deselect)
+// ══════════════════════════════════════════════════════
+function getExcludedAdvisors() {
+  try { return JSON.parse(localStorage.getItem('excludedAdvisors') || '[]'); } catch(e) { return []; }
+}
+function setExcludedAdvisors(list) {
+  localStorage.setItem('excludedAdvisors', JSON.stringify(list));
+}
+function isAdvisorActive(name) {
+  return !getExcludedAdvisors().includes(name.toUpperCase());
+}
+function getActiveAdvisors() {
+  return saAdvisors.filter(a => isAdvisorActive(a.name));
+}
+
+function toggleAdvisorMgr() {
+  const panel = document.getElementById('advisor-mgr-panel');
+  const open = panel.style.display === 'none';
+  panel.style.display = open ? 'block' : 'none';
+  if (open) buildAdvisorMgrGrid();
+}
+
+function buildAdvisorMgrGrid() {
+  const grid = document.getElementById('advisor-mgr-grid');
+  const excluded = getExcludedAdvisors();
+  const stores = [...new Set(saAdvisors.map(a => a.store))];
+  let html = '';
+  stores.forEach(store => {
+    const advisors = saAdvisors.filter(a => a.store === store);
+    html += '<div style="margin-bottom:8px">';
+    html += '<div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:4px;padding:4px 0;border-bottom:1px solid var(--border)">' + store + '</div>';
+    advisors.forEach(a => {
+      const checked = !excluded.includes(a.name.toUpperCase());
+      html += '<label style="display:flex;align-items:center;gap:8px;padding:3px 0;cursor:pointer;font-size:12px;color:' + (checked ? 'var(--text)' : 'var(--muted)') + '">';
+      html += '<input type="checkbox" class="adv-mgr-cb" data-name="' + a.name.toUpperCase() + '" ' + (checked ? 'checked' : '') + ' style="width:16px;height:16px;cursor:pointer">';
+      html += '<span>' + a.name + '</span>';
+      html += '</label>';
+    });
+    html += '</div>';
+  });
+  grid.innerHTML = html;
+}
+
+function advisorMgrSelectAll(checked) {
+  document.querySelectorAll('.adv-mgr-cb').forEach(cb => { cb.checked = checked; });
+}
+
+function saveAdvisorSelections() {
+  const excluded = [];
+  document.querySelectorAll('.adv-mgr-cb').forEach(cb => {
+    if (!cb.checked) excluded.push(cb.dataset.name);
+  });
+  setExcludedAdvisors(excluded);
+  const total = saAdvisors.length;
+  const active = total - excluded.length;
+  saRenderTable();
+  renderLeaderboard();
+  document.getElementById('advisor-mgr-panel').style.display = 'none';
+  upLog('Advisors: ' + active + ' of ' + total + ' active (' + excluded.length + ' hidden)', 'ok');
+}
+
+// ══════════════════════════════════════════════════════
 // LEADERBOARD (inline to share saAdvisors)
 // ══════════════════════════════════════════════════════
 // ══════════════════════════════════════════════════════
 // LEADERBOARD
 // ══════════════════════════════════════════════════════
-const lbAdvisors = saAdvisors.map(a => ({
-  ...a,
-  combined: a.alignCnt + a.tireCnt + a.valvCnt
-})).filter(a => a.combined > 0 || a.alignCnt > 0 || a.tireCnt > 0 || a.valvCnt > 0);
+function getLbAdvisors() {
+  return getActiveAdvisors().map(a => ({
+    ...a,
+    combined: a.alignCnt + a.tireCnt + a.valvCnt
+  })).filter(a => a.combined > 0 || a.alignCnt > 0 || a.tireCnt > 0 || a.valvCnt > 0);
+}
 
 const storeShort = {
   'Bob Rohrman Honda':   'Honda',
@@ -1322,6 +1406,7 @@ const podiumHeights = [130, 100, 80];
 const podiumColors  = ['#1e293b','#475569','#64748b'];
 
 function renderLeaderboard() {
+  const lbAdvisors = getLbAdvisors();
   const sorted = [...lbAdvisors].sort((a,b) => lbSortKey(b) - lbSortKey(a));
 
   // Update table header
@@ -1513,6 +1598,9 @@ window.toggleEntry  = toggleEntry;
 window.applyEntries = applyEntries;
 window.togglePursuit = togglePursuit;
 window.applyPursuit  = applyPursuit;
+window.toggleAdvisorMgr    = toggleAdvisorMgr;
+window.advisorMgrSelectAll = advisorMgrSelectAll;
+window.saveAdvisorSelections = saveAdvisorSelections;
 
 window.addEventListener('DOMContentLoaded', initDashboard);
 </script>
