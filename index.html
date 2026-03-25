@@ -48,7 +48,7 @@ function dzDrag(e, id) { e.preventDefault(); document.getElementById(id).classLi
 function dzLeave(id) { document.getElementById(id).classList.remove('drag-over'); }
 function dzDrop(e, type) {
   e.preventDefault();
-  const id = 'dz-' + (type === 'gp' ? 'gp' : type === 'sa' ? 'sa' : type === 'email' ? 'email' : 'tech');
+  const id = 'dz-' + (type === 'gp' ? 'gp' : type === 'sa' ? 'sa' : type === 'email' ? 'email' : type === 'wip' ? 'wip' : type === 'pursuit' ? 'pursuit' : 'tech');
   dzLeave(id);
   const file = e.dataTransfer.files[0];
   if (file) parseFile(file, type);
@@ -67,6 +67,8 @@ function parseFile(file, type) {
       if (type === 'sa')    parseSA(wb, file.name);
       if (type === 'email') parseEmail(wb, file.name);
       if (type === 'tech')  parseTech(wb, file.name);
+      if (type === 'wip')   parseWIP(wb, file.name);
+      if (type === 'pursuit') parsePursuit(file);
     } catch(err) {
       const zId = 'dz-' + (type === 'gp' ? 'gp' : type === 'sa' ? 'sa' : type === 'email' ? 'email' : 'tech');
       setZoneStatus(zId, '✗ Parse error: ' + err.message, 'err');
@@ -168,6 +170,7 @@ function parseSA(wb, filename) {
       vidSent:  saAdvisors.find(a => a.name.toUpperCase() === advisorName.toUpperCase())?.vidSent  ?? null,
       vidViewed:saAdvisors.find(a => a.name.toUpperCase() === advisorName.toUpperCase())?.vidViewed?? null,
       onlinePay:saAdvisors.find(a => a.name.toUpperCase() === advisorName.toUpperCase())?.onlinePay?? null,
+      openRo:   saAdvisors.find(a => a.name.toUpperCase() === advisorName.toUpperCase())?.openRo   ?? null,
     });
   });
 
@@ -211,6 +214,134 @@ function parseEmail(wb, filename) {
   saRenderTable();
   setZoneStatus('dz-email', `✓ Updated ${updated} advisors`, 'ok');
   addLog(`Email: updated ${updated} advisors from ${filename}`, 'ok');
+}
+
+// ── PARSE WIP ──
+function parseWIP(wb, filename) {
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+  const ROHRMAN = {1712:'honda',1713:'toyota',1714:'kia',1715:'hyundai',1718:'indy'};
+  let updated = 0;
+
+  let currentDealer = null;
+  const buckets = [];
+
+  rows.forEach(row => {
+    const v0 = Number(row[0]);
+    if (ROHRMAN[v0]) {
+      if (currentDealer && buckets.length >= 3) {
+        const total = buckets.reduce((s,b) => s + (Number(b[5])||0), 0);
+        const over30 = (Number(buckets[2]?.[5])||0) + (Number(buckets[3]?.[5])||0);
+        const store = gpStores.find(s => s.id === ROHRMAN[currentDealer]);
+        if (store) { store.openRo = total; store.over30 = over30; updated++; }
+      }
+      currentDealer = v0;
+      buckets.length = 0;
+    } else if (currentDealer && (String(row[2]).includes('CURRENT') || String(row[1]).includes('-'))) {
+      buckets.push(row);
+    }
+  });
+  // Last dealer
+  if (currentDealer && buckets.length >= 3) {
+    const total = buckets.reduce((s,b) => s + (Number(b[5])||0), 0);
+    const over30 = (Number(buckets[2]?.[5])||0) + (Number(buckets[3]?.[5])||0);
+    const store = gpStores.find(s => s.id === ROHRMAN[currentDealer]);
+    if (store) { store.openRo = total; store.over30 = over30; updated++; }
+  }
+
+  renderGPCards(); gpRenderTable();
+  setZoneStatus('dz-wip', `✓ Updated ${updated} stores`, updated > 0 ? 'ok' : 'err');
+  addLog(`WIP: updated ${updated} stores from ${filename}`, updated > 0 ? 'ok' : 'err');
+}
+
+// ── PARSE PURSUIT PDF ──
+// Column order from report: GP% | TotalGPYoY | CPROYoY | CPGPYoY | Align | Valv | Tires | Policy | OpProfit | SERVICE POINTS
+const PURSUIT_STORE_MAP = {
+  'bob rohrman honda':    0,
+  'bob rohrman toyota':   1,
+  'bob rohrman kia':      2,
+  'bob rohrman hyundai genesis': 3,
+  'indy hyundai genesis': 4,
+};
+
+function parsePursuit(file) {
+  // Read as text using FileReader — PDFs from this report have extractable text
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const bytes = new Uint8Array(e.target.result);
+      // Extract text using a simple byte scan for readable ASCII lines
+      let text = '';
+      for (let i = 0; i < bytes.length; i++) {
+        const c = bytes[i];
+        if (c >= 32 && c < 127) text += String.fromCharCode(c);
+        else if (c === 10 || c === 13) text += '\n';
+      }
+
+      const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 10);
+      let updated = 0;
+
+      lines.forEach(line => {
+        const lower = line.toLowerCase();
+        let storeIdx = -1;
+        for (const [name, idx] of Object.entries(PURSUIT_STORE_MAP)) {
+          if (lower.includes(name)) { storeIdx = idx; break; }
+        }
+        if (storeIdx < 0) return;
+
+        // Extract all numbers from the line
+        const nums = line.match(/-?\d+\.\d+%?|-?\d+%?/g);
+        if (!nums || nums.length < 10) return;
+
+        const pct = v => parseFloat(String(v).replace('%',''));
+        const s = pursuitStores[storeIdx];
+        // Try to find the SERVICE POINTS value (integer, 0-100)
+        // It appears after the 9 metric columns
+        const allNums = nums.map(n => parseFloat(String(n).replace('%','')));
+
+        // Find points: look for a clean integer between 0-100 after at least 9 numbers
+        let pointsVal = null;
+        for (let j = 8; j < allNums.length; j++) {
+          if (Number.isInteger(allNums[j]) && allNums[j] >= 0 && allNums[j] <= 100) {
+            pointsVal = allNums[j]; break;
+          }
+        }
+
+        if (allNums.length >= 9) {
+          s.gpPct     = allNums[0];
+          s.totalYoy  = allNums[1];
+          // skip cpRoYoy (col 2)
+          s.cpYoy     = allNums[3];
+          s.align     = allNums[4];
+          s.valv      = allNums[5];
+          s.tires     = allNums[6];
+          s.policy    = allNums[7];
+          s.opProfit  = allNums[8];
+          if (pointsVal !== null) s.points = pointsVal;
+          updated++;
+        }
+      });
+
+      if (updated > 0) {
+        renderPursuit();
+        buildPursuitEntry();
+        setZoneStatus('dz-pursuit', `✓ Updated ${updated} stores`, 'ok');
+        addLog(`Pursuit: updated ${updated} stores from ${file.name}`, 'ok');
+      } else {
+        // Fallback: show manual entry panel with instructions
+        setZoneStatus('dz-pursuit', '⚠ Auto-parse limited — use manual entry panel on Infinite Pursuit tab', 'err');
+        addLog(`Pursuit: PDF text extraction limited for ${file.name} — use the manual entry panel`, 'err');
+        // Switch to pursuit tab and open entry panel
+        document.querySelectorAll('.tab-btn').forEach(b => { if (b.textContent.includes('Infinite')) b.click(); });
+        const p = document.getElementById('pursuit-entry-panel');
+        if (p) { p.style.display = 'block'; document.getElementById('pursuit-toggle-icon').textContent = 'COLLAPSE ▲'; }
+      }
+    } catch(err) {
+      setZoneStatus('dz-pursuit', '✗ Error: ' + err.message, 'err');
+      addLog('Pursuit parse error: ' + err.message, 'err');
+    }
+  };
+  reader.readAsArrayBuffer(file);
 }
 
 // ── PARSE ADVISOR TECHNOLOGY ──
@@ -565,7 +696,6 @@ function parseTech(wb, filename) {
     text-align: center;
     cursor: pointer;
     transition: all 0.15s;
-    position: relative;
   }
   .drop-zone:hover, .drop-zone.drag-over { border-color: var(--accent); background: var(--accent-bg); }
   .drop-zone.success { border-color: var(--green); background: var(--green-bg); border-style: solid; }
@@ -576,7 +706,7 @@ function parseTech(wb, filename) {
   .drop-status { font-size: 11px; font-weight: 600; margin-top: 8px; min-height: 16px; }
   .drop-status.ok  { color: var(--green); }
   .drop-status.err { color: var(--red); }
-  .drop-input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+  /* file inputs are hidden and triggered by buttons */
   .upload-log { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; font-family: 'DM Mono', monospace; font-size: 11px; color: var(--text2); max-height: 200px; overflow-y: auto; }
   .log-line { padding: 3px 0; border-bottom: 1px solid var(--border); }
   .log-line.ok  { color: var(--green); }
@@ -625,6 +755,27 @@ function parseTech(wb, filename) {
       <div class="panel-sub">Store performance vs standards · March 2026 MTD</div>
     </div>
     <div class="period-badge">Goal: 70 pts</div>
+  </div>
+
+  <!-- Pursuit manual entry -->
+  <div class="summary-card" style="margin-bottom:16px">
+    <div class="summary-card-header" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="togglePursuit()">
+      <span>✏️ Update Pursuit Points & Metrics (click to expand)</span>
+      <span id="pursuit-toggle-icon" style="color:var(--accent);font-size:10px;font-weight:700">EXPAND ▼</span>
+    </div>
+    <div id="pursuit-entry-panel" style="display:none;padding:16px;overflow-x:auto">
+      <table>
+        <thead>
+          <tr class="group-row">
+            <th class="left">Store</th>
+            <th>Points</th><th>GP%</th><th>Total YoY%</th><th>CP YoY%</th>
+            <th>Align%</th><th>Valv%</th><th>Tires%</th><th>Policy%</th><th>Op Profit%</th>
+          </tr>
+        </thead>
+        <tbody id="pursuit-entry-tbody"></tbody>
+      </table>
+      <button class="apply-btn" onclick="applyPursuit()">Apply &amp; Update Dashboard</button>
+    </div>
   </div>
 
   <div class="pursuit-grid" id="pursuit-grid"></div>
@@ -756,6 +907,7 @@ function parseTech(wb, filename) {
           <tr class="group-row">
             <th class="left" rowspan="2" style="min-width:160px">Advisor</th>
             <th rowspan="2">RO Count<br><span style="font-weight:400;opacity:.65">Goal 170</span></th>
+            <th rowspan="2">Open<br>ROs</th>
             <th rowspan="2">RAP<br>Hrs/RO<br><span style="font-weight:400;opacity:.65">Goal 1.5</span></th>
             <th rowspan="2">Discount<br><span style="font-weight:400;opacity:.65">Total $</span></th>
             <th rowspan="2">ELR<br>After Disc</th>
@@ -794,11 +946,11 @@ function switchTab(id, btn) {
 // INFINITE PURSUIT DATA
 // ══════════════════════════════════════════════════════
 const pursuitStores = [
-  { name:'Bob Rohrman Honda',    css:'honda',      points:30,  gpPct:77.7, totalYoy:-3.6,  cpYoy:-46.6, align:7.7,  valv:40.5, tires:6.6,  policy:1.2, opProfit:8.1  },
-  { name:'Bob Rohrman Toyota',   css:'toyota',     points:50,  gpPct:75.5, totalYoy:13.3,  cpYoy:4.9,   align:8.9,  valv:30.3, tires:4.5,  policy:0.8, opProfit:12.4 },
-  { name:'Bob Rohrman Kia',      css:'kia',        points:55,  gpPct:76.2, totalYoy:16.6,  cpYoy:23.2,  align:10.4, valv:31.5, tires:3.8,  policy:1.0, opProfit:10.8 },
-  { name:'Bob Rohrman Hyundai',  css:'lafhyundai', points:75,  gpPct:75.5, totalYoy:29.4,  cpYoy:9.99,  align:13.0, valv:26.5, tires:11.3, policy:0.6, opProfit:15.2 },
-  { name:'Indy Hyundai',         css:'indyhyundai',points:5,   gpPct:77.7, totalYoy:-10.1, cpYoy:-32.9, align:7.8,  valv:13.4, tires:30.5, policy:2.1, opProfit:-0.1 },
+  { name:'Bob Rohrman Honda',    css:'honda',      points:45,  gpPct:75.26, totalYoy:-0.89, cpYoy:44.58, align:7.53,  valv:40.43, tires:13.83, policy:0.20, opProfit:30.92 },
+  { name:'Bob Rohrman Toyota',   css:'toyota',     points:60,  gpPct:76.78, totalYoy:14.23, cpYoy:5.79,  align:9.00,  valv:30.29, tires:8.53,  policy:0.70, opProfit:24.76 },
+  { name:'Bob Rohrman Kia',      css:'kia',        points:70,  gpPct:75.65, totalYoy:21.26, cpYoy:24.48, align:10.53, valv:30.70, tires:16.40, policy:0.38, opProfit:8.09  },
+  { name:'Bob Rohrman Hyundai',  css:'lafhyundai', points:100, gpPct:77.53, totalYoy:34.40, cpYoy:10.53, align:13.06, valv:26.12, tires:15.56, policy:-0.06,opProfit:17.77 },
+  { name:'Indy Hyundai',         css:'indyhyundai',points:15,  gpPct:77.22, totalYoy:-9.52, cpYoy:-35.43,align:7.66,  valv:13.14, tires:74.57, policy:1.91, opProfit:7.37  },
 ];
 
 const STD = { gpPct:75, totalYoy:0, cpYoy:0, align:10, valv:23, tires:15, policy:3, opProfit:8 };
@@ -994,27 +1146,27 @@ function applyEntries(){
 // SERVICE ADVISOR SCORECARD DATA
 // ══════════════════════════════════════════════════════
 const saAdvisors = [
-  { store:'Bob Rohrman Honda',    key:'honda',   name:'KAYLA MERKEL',         ro:133, disc:1799, rap:2.15, elr:153, alignPct:9.8,  alignCnt:10, tirePct:7.8,  tireCnt:8,  valvPct:49.0, valvCnt:50, email:83.5, vidSent:11.0, vidViewed:28.6, onlinePay:3.9 },
-  { store:'Bob Rohrman Honda',    key:'honda',   name:'ALEXANDRIA ARTEMIS',   ro:132, disc:1992, rap:1.83, elr:150, alignPct:7.6,  alignCnt:8,  tirePct:5.7,  tireCnt:6,  valvPct:41.0, valvCnt:43, email:87.1, vidSent:7.8,  vidViewed:20.0, onlinePay:8.6 },
-  { store:'Bob Rohrman Honda',    key:'honda',   name:'BRIAN STELLWAG',       ro:79,  disc:596,  rap:1.87, elr:155, alignPct:6.5,  alignCnt:4,  tirePct:6.5,  tireCnt:4,  valvPct:50.0, valvCnt:31, email:82.2, vidSent:3.9,  vidViewed:33.3, onlinePay:2.6 },
-  { store:'Bob Rohrman Honda',    key:'honda',   name:'ANTHONY RAMIREZ',      ro:136, disc:1411, rap:1.25, elr:144, alignPct:2.8,  alignCnt:3,  tirePct:5.6,  tireCnt:6,  valvPct:22.2, valvCnt:24, email:70.0, vidSent:11.3, vidViewed:33.3, onlinePay:0.8 },
-  { store:'Bob Rohrman Honda',    key:'honda',   name:'XION OBOMSAWIN',       ro:104, disc:197,  rap:1.22, elr:129, alignPct:13.3, alignCnt:10, tirePct:8.0,  tireCnt:6,  valvPct:46.7, valvCnt:35, email:82.6, vidSent:11.9, vidViewed:25.0, onlinePay:0.0 },
-  { store:'Bob Rohrman Toyota',   key:'toyota',  name:'OLIVER LOPEZ-MAYORGA', ro:204, disc:1324, rap:1.09, elr:141, alignPct:4.8,  alignCnt:8,  tirePct:4.8,  tireCnt:8,  valvPct:32.7, valvCnt:55, email:89.8, vidSent:52.5, vidViewed:21.1, onlinePay:2.2 },
-  { store:'Bob Rohrman Toyota',   key:'toyota',  name:'Adam Kulaga',           ro:168, disc:2421, rap:1.45, elr:144, alignPct:12.2, alignCnt:16, tirePct:3.8,  tireCnt:5,  valvPct:40.5, valvCnt:53, email:75.8, vidSent:62.1, vidViewed:23.2, onlinePay:5.2 },
-  { store:'Bob Rohrman Toyota',   key:'toyota',  name:'MATTHEW LENARDO',      ro:144, disc:1082, rap:1.66, elr:156, alignPct:8.5,  alignCnt:9,  tirePct:7.5,  tireCnt:8,  valvPct:26.4, valvCnt:28, email:79.2, vidSent:57.4, vidViewed:20.3, onlinePay:2.3 },
-  { store:'Bob Rohrman Toyota',   key:'toyota',  name:'MAX TERRY',             ro:162, disc:761,  rap:1.41, elr:153, alignPct:7.4,  alignCnt:9,  tirePct:5.0,  tireCnt:6,  valvPct:24.0, valvCnt:29, email:85.3, vidSent:58.9, vidViewed:19.3, onlinePay:1.4 },
-  { store:'Bob Rohrman Toyota',   key:'toyota',  name:'BRITTANY GERBER',      ro:150, disc:1387, rap:1.29, elr:148, alignPct:11.4, alignCnt:13, tirePct:3.5,  tireCnt:4,  valvPct:27.2, valvCnt:31, email:83.3, vidSent:63.8, vidViewed:24.4, onlinePay:0.7 },
-  { store:'Bob Rohrman Toyota',   key:'toyota',  name:'Rebeca Alvarado',      ro:101, disc:0,    rap:0.37, elr:127, alignPct:0.0,  alignCnt:0,  tirePct:0.0,  tireCnt:0,  valvPct:0.0,  valvCnt:0,  email:89.6, vidSent:73.0, vidViewed:28.8, onlinePay:0.0 },
-  { store:'Bob Rohrman Toyota',   key:'toyota',  name:'JACOB LINSON',         ro:69,  disc:715,  rap:1.47, elr:144, alignPct:13.6, alignCnt:8,  tirePct:1.7,  tireCnt:1,  valvPct:30.5, valvCnt:18, email:81.8, vidSent:64.1, vidViewed:14.6, onlinePay:0.0 },
-  { store:'Bob Rohrman Kia',      key:'kia',     name:'PHILIP DOVOLIS',       ro:157, disc:1645, rap:1.79, elr:140, alignPct:18.1, alignCnt:21, tirePct:7.8,  tireCnt:9,  valvPct:58.6, valvCnt:68, email:81.4, vidSent:17.9, vidViewed:28.0, onlinePay:3.6 },
-  { store:'Bob Rohrman Kia',      key:'kia',     name:'EVAN HANTHORNE',       ro:136, disc:994,  rap:1.10, elr:149, alignPct:6.4,  alignCnt:7,  tirePct:0.9,  tireCnt:1,  valvPct:14.7, valvCnt:16, email:88.0, vidSent:21.1, vidViewed:7.1,  onlinePay:1.5 },
-  { store:'Bob Rohrman Kia',      key:'kia',     name:'JOSH LINDSTROM',       ro:119, disc:706,  rap:1.05, elr:139, alignPct:5.6,  alignCnt:5,  tirePct:2.2,  tireCnt:2,  valvPct:17.8, valvCnt:16, email:77.2, vidSent:19.3, vidViewed:22.7, onlinePay:1.8 },
-  { store:'Bob Rohrman Hyundai',  key:'hyundai', name:'JORDAN TROXEL',        ro:173, disc:688,  rap:1.41, elr:157, alignPct:22.9, alignCnt:22, tirePct:20.8, tireCnt:20, valvPct:28.1, valvCnt:27, email:87.4, vidSent:73.9, vidViewed:25.7, onlinePay:5.6 },
-  { store:'Bob Rohrman Hyundai',  key:'hyundai', name:'DAVID RILEY',          ro:156, disc:153,  rap:1.25, elr:157, alignPct:6.7,  alignCnt:6,  tirePct:3.4,  tireCnt:3,  valvPct:29.2, valvCnt:26, email:86.6, vidSent:69.3, vidViewed:26.1, onlinePay:2.4 },
-  { store:'Bob Rohrman Hyundai',  key:'hyundai', name:'NEVEN CHASTEEN',       ro:118, disc:175,  rap:1.69, elr:157, alignPct:5.7,  alignCnt:3,  tirePct:7.5,  tireCnt:4,  valvPct:18.9, valvCnt:10, email:89.2, vidSent:59.1, vidViewed:7.7,  onlinePay:6.8 },
-  { store:'Indy Hyundai',         key:'indy',    name:'ERICK CONKLIN',        ro:148, disc:354,  rap:1.26, elr:149, alignPct:14.0, alignCnt:14, tirePct:48.0, tireCnt:48, valvPct:17.0, valvCnt:17, email:92.6, vidSent:0.0,  vidViewed:0.0,  onlinePay:5.0 },
-  { store:'Indy Hyundai',         key:'indy',    name:'Benjamin Cucio',       ro:191, disc:40,   rap:0.97, elr:117, alignPct:4.3,  alignCnt:3,  tirePct:37.7, tireCnt:26, valvPct:21.7, valvCnt:15, email:94.8, vidSent:0.0,  vidViewed:0.0,  onlinePay:4.4 },
-  { store:'Indy Hyundai',         key:'indy',    name:'NOAH WEAVER',          ro:68,  disc:39,   rap:0.91, elr:134, alignPct:10.0, alignCnt:4,  tirePct:20.0, tireCnt:8,  valvPct:10.0, valvCnt:4,  email:89.6, vidSent:0.0,  vidViewed:0.0,  onlinePay:0.0 },
+  { store:'Bob Rohrman Honda',    key:'honda',   name:'KAYLA MERKEL',         ro:133, disc:1799, rap:2.15, elr:153, alignPct:9.8,  alignCnt:10, tirePct:7.8,  tireCnt:8,  valvPct:49.0, valvCnt:50, email:83.5, vidSent:11.0, vidViewed:28.6, onlinePay:3.9, openRo:13},
+  { store:'Bob Rohrman Honda',    key:'honda',   name:'ALEXANDRIA ARTEMIS',   ro:132, disc:1992, rap:1.83, elr:150, alignPct:7.6,  alignCnt:8,  tirePct:5.7,  tireCnt:6,  valvPct:41.0, valvCnt:43, email:87.1, vidSent:7.8,  vidViewed:20.0, onlinePay:8.6, openRo:14},
+  { store:'Bob Rohrman Honda',    key:'honda',   name:'BRIAN STELLWAG',       ro:79,  disc:596,  rap:1.87, elr:155, alignPct:6.5,  alignCnt:4,  tirePct:6.5,  tireCnt:4,  valvPct:50.0, valvCnt:31, email:82.2, vidSent:3.9,  vidViewed:33.3, onlinePay:2.6, openRo:7},
+  { store:'Bob Rohrman Honda',    key:'honda',   name:'ANTHONY RAMIREZ',      ro:136, disc:1411, rap:1.25, elr:144, alignPct:2.8,  alignCnt:3,  tirePct:5.6,  tireCnt:6,  valvPct:22.2, valvCnt:24, email:70.0, vidSent:11.3, vidViewed:33.3, onlinePay:0.8, openRo:9},
+  { store:'Bob Rohrman Honda',    key:'honda',   name:'XION OBOMSAWIN',       ro:104, disc:197,  rap:1.22, elr:129, alignPct:13.3, alignCnt:10, tirePct:8.0,  tireCnt:6,  valvPct:46.7, valvCnt:35, email:82.6, vidSent:11.9, vidViewed:25.0, onlinePay:0.0, openRo:4},
+  { store:'Bob Rohrman Toyota',   key:'toyota',  name:'OLIVER LOPEZ-MAYORGA', ro:204, disc:1324, rap:1.09, elr:141, alignPct:4.8,  alignCnt:8,  tirePct:4.8,  tireCnt:8,  valvPct:32.7, valvCnt:55, email:89.8, vidSent:52.5, vidViewed:21.1, onlinePay:2.2, openRo:9},
+  { store:'Bob Rohrman Toyota',   key:'toyota',  name:'Adam Kulaga',           ro:168, disc:2421, rap:1.45, elr:144, alignPct:12.2, alignCnt:16, tirePct:3.8,  tireCnt:5,  valvPct:40.5, valvCnt:53, email:75.8, vidSent:62.1, vidViewed:23.2, onlinePay:5.2, openRo:7},
+  { store:'Bob Rohrman Toyota',   key:'toyota',  name:'MATTHEW LENARDO',      ro:144, disc:1082, rap:1.66, elr:156, alignPct:8.5,  alignCnt:9,  tirePct:7.5,  tireCnt:8,  valvPct:26.4, valvCnt:28, email:79.2, vidSent:57.4, vidViewed:20.3, onlinePay:2.3, openRo:11},
+  { store:'Bob Rohrman Toyota',   key:'toyota',  name:'MAX TERRY',             ro:162, disc:761,  rap:1.41, elr:153, alignPct:7.4,  alignCnt:9,  tirePct:5.0,  tireCnt:6,  valvPct:24.0, valvCnt:29, email:85.3, vidSent:58.9, vidViewed:19.3, onlinePay:1.4, openRo:16},
+  { store:'Bob Rohrman Toyota',   key:'toyota',  name:'BRITTANY GERBER',      ro:150, disc:1387, rap:1.29, elr:148, alignPct:11.4, alignCnt:13, tirePct:3.5,  tireCnt:4,  valvPct:27.2, valvCnt:31, email:83.3, vidSent:63.8, vidViewed:24.4, onlinePay:0.7, openRo:7},
+  { store:'Bob Rohrman Toyota',   key:'toyota',  name:'Rebeca Alvarado',      ro:101, disc:0,    rap:0.37, elr:127, alignPct:0.0,  alignCnt:0,  tirePct:0.0,  tireCnt:0,  valvPct:0.0,  valvCnt:0,  email:89.6, vidSent:73.0, vidViewed:28.8, onlinePay:0.0, openRo:0},
+  { store:'Bob Rohrman Toyota',   key:'toyota',  name:'JACOB LINSON',         ro:69,  disc:715,  rap:1.47, elr:144, alignPct:13.6, alignCnt:8,  tirePct:1.7,  tireCnt:1,  valvPct:30.5, valvCnt:18, email:81.8, vidSent:64.1, vidViewed:14.6, onlinePay:0.0, openRo:6},
+  { store:'Bob Rohrman Kia',      key:'kia',     name:'PHILIP DOVOLIS',       ro:157, disc:1645, rap:1.79, elr:140, alignPct:18.1, alignCnt:21, tirePct:7.8,  tireCnt:9,  valvPct:58.6, valvCnt:68, email:81.4, vidSent:17.9, vidViewed:28.0, onlinePay:3.6, openRo:19},
+  { store:'Bob Rohrman Kia',      key:'kia',     name:'EVAN HANTHORNE',       ro:136, disc:994,  rap:1.10, elr:149, alignPct:6.4,  alignCnt:7,  tirePct:0.9,  tireCnt:1,  valvPct:14.7, valvCnt:16, email:88.0, vidSent:21.1, vidViewed:7.1,  onlinePay:1.5, openRo:26},
+  { store:'Bob Rohrman Kia',      key:'kia',     name:'JOSH LINDSTROM',       ro:119, disc:706,  rap:1.05, elr:139, alignPct:5.6,  alignCnt:5,  tirePct:2.2,  tireCnt:2,  valvPct:17.8, valvCnt:16, email:77.2, vidSent:19.3, vidViewed:22.7, onlinePay:1.8, openRo:30},
+  { store:'Bob Rohrman Hyundai',  key:'hyundai', name:'JORDAN TROXEL',        ro:173, disc:688,  rap:1.41, elr:157, alignPct:22.9, alignCnt:22, tirePct:20.8, tireCnt:20, valvPct:28.1, valvCnt:27, email:87.4, vidSent:73.9, vidViewed:25.7, onlinePay:5.6, openRo:10},
+  { store:'Bob Rohrman Hyundai',  key:'hyundai', name:'DAVID RILEY',          ro:156, disc:153,  rap:1.25, elr:157, alignPct:6.7,  alignCnt:6,  tirePct:3.4,  tireCnt:3,  valvPct:29.2, valvCnt:26, email:86.6, vidSent:69.3, vidViewed:26.1, onlinePay:2.4, openRo:9},
+  { store:'Bob Rohrman Hyundai',  key:'hyundai', name:'NEVEN CHASTEEN',       ro:118, disc:175,  rap:1.69, elr:157, alignPct:5.7,  alignCnt:3,  tirePct:7.5,  tireCnt:4,  valvPct:18.9, valvCnt:10, email:89.2, vidSent:59.1, vidViewed:7.7,  onlinePay:6.8, openRo:9},
+  { store:'Indy Hyundai',         key:'indy',    name:'ERICK CONKLIN',        ro:148, disc:354,  rap:1.26, elr:149, alignPct:14.0, alignCnt:14, tirePct:48.0, tireCnt:48, valvPct:17.0, valvCnt:17, email:92.6, vidSent:0.0,  vidViewed:0.0,  onlinePay:5.0, openRo:31},
+  { store:'Indy Hyundai',         key:'indy',    name:'Benjamin Cucio',       ro:191, disc:40,   rap:0.97, elr:117, alignPct:4.3,  alignCnt:3,  tirePct:37.7, tireCnt:26, valvPct:21.7, valvCnt:15, email:94.8, vidSent:0.0,  vidViewed:0.0,  onlinePay:4.4, openRo:29},
+  { store:'Indy Hyundai',         key:'indy',    name:'NOAH WEAVER',          ro:68,  disc:39,   rap:0.91, elr:134, alignPct:10.0, alignCnt:4,  tirePct:20.0, tireCnt:8,  valvPct:10.0, valvCnt:4,  email:89.6, vidSent:0.0,  vidViewed:0.0,  onlinePay:0.0, openRo:46},
 ];
 
 const SA_B = { ro:170, rap:1.5, align:10, tire:15, valv:23, email:90, vidSent:75, vidViewed:25 };
@@ -1055,11 +1207,12 @@ function saRenderTable() {
   stores.forEach(store => {
     const rows = saAdvisors.filter(a=>a.store===store);
     if(saFilter!=='all' && !rows[0].key.includes(saFilter)) return;
-    html += `<tr class="store-hdr"><td colspan="16">${store}</td></tr>`;
+    html += `<tr class="store-hdr"><td colspan="17">${store}</td></tr>`;
     rows.forEach(a => {
       html += `<tr>
         <td class="left"><span class="adv-name">${a.name}</span></td>
         ${saRoCell(a.ro)}
+        <td class="num" style="color:${(a.openRo||0)>0?'var(--text2)':'var(--muted)'}">${a.openRo??'—'}</td>
         ${saCell(a.rap,       SA_B.rap,      saDec)}
         ${saPlain(a.disc,     saDlr)}
         ${saPlain(a.elr>0?a.elr:null, v=>'$'+Math.round(v))}
@@ -1081,6 +1234,7 @@ function saRenderTable() {
     html+=`<tr class="store-total">
       <td>Store Avg / Total</td>
       <td class="num">${sum('ro')} ROs</td>
+      <td class="num">${sum('openRo')} open</td>
       <td class="num">${avg('rap').toFixed(2)}</td>
       <td class="num">$${sum('disc').toLocaleString()}</td>
       <td class="num">$${Math.round(avg('elr'))}</td>
@@ -1214,9 +1368,58 @@ function lbFilter(btn, mode) {
 }
 
 // ══════════════════════════════════════════════════════
+// PURSUIT ENTRY
+// ══════════════════════════════════════════════════════
+function buildPursuitEntry() {
+  const tbody = document.getElementById('pursuit-entry-tbody');
+  if (!tbody) return;
+  const inStyle = 'background:var(--surface);border:1px solid var(--border2);border-radius:4px;padding:4px 6px;color:var(--text);font-family:"DM Mono",monospace;font-size:12px;width:72px;text-align:right';
+  tbody.innerHTML = '';
+  pursuitStores.forEach((s, i) => {
+    tbody.innerHTML += `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:8px 10px;font-weight:600">${s.name}</td>
+      <td style="padding:6px 6px"><input style="${inStyle}" id="pt_pts_${i}"    type="number" value="${s.points}"></td>
+      <td style="padding:6px 6px"><input style="${inStyle}" id="pt_gp_${i}"     type="number" step="0.1" value="${s.gpPct}"></td>
+      <td style="padding:6px 6px"><input style="${inStyle}" id="pt_tyoy_${i}"   type="number" step="0.1" value="${s.totalYoy}"></td>
+      <td style="padding:6px 6px"><input style="${inStyle}" id="pt_cyoy_${i}"   type="number" step="0.1" value="${s.cpYoy}"></td>
+      <td style="padding:6px 6px"><input style="${inStyle}" id="pt_align_${i}"  type="number" step="0.1" value="${s.align}"></td>
+      <td style="padding:6px 6px"><input style="${inStyle}" id="pt_valv_${i}"   type="number" step="0.1" value="${s.valv}"></td>
+      <td style="padding:6px 6px"><input style="${inStyle}" id="pt_tires_${i}"  type="number" step="0.1" value="${s.tires}"></td>
+      <td style="padding:6px 6px"><input style="${inStyle}" id="pt_pol_${i}"    type="number" step="0.1" value="${s.policy}"></td>
+      <td style="padding:6px 6px"><input style="${inStyle}" id="pt_op_${i}"     type="number" step="0.1" value="${s.opProfit}"></td>
+    </tr>`;
+  });
+}
+
+function togglePursuit() {
+  const p = document.getElementById('pursuit-entry-panel');
+  const open = p.style.display === 'none';
+  p.style.display = open ? 'block' : 'none';
+  document.getElementById('pursuit-toggle-icon').textContent = open ? 'COLLAPSE ▲' : 'EXPAND ▼';
+}
+
+function applyPursuit() {
+  pursuitStores.forEach((s, i) => {
+    s.points   = parseFloat(document.getElementById(`pt_pts_${i}`).value)  || s.points;
+    s.gpPct    = parseFloat(document.getElementById(`pt_gp_${i}`).value)   || s.gpPct;
+    s.totalYoy = parseFloat(document.getElementById(`pt_tyoy_${i}`).value) ?? s.totalYoy;
+    s.cpYoy    = parseFloat(document.getElementById(`pt_cyoy_${i}`).value) ?? s.cpYoy;
+    s.align    = parseFloat(document.getElementById(`pt_align_${i}`).value)|| s.align;
+    s.valv     = parseFloat(document.getElementById(`pt_valv_${i}`).value) || s.valv;
+    s.tires    = parseFloat(document.getElementById(`pt_tires_${i}`).value)|| s.tires;
+    s.policy   = parseFloat(document.getElementById(`pt_pol_${i}`).value)  ?? s.policy;
+    s.opProfit = parseFloat(document.getElementById(`pt_op_${i}`).value)   ?? s.opProfit;
+  });
+  renderPursuit();
+  document.getElementById('pursuit-entry-panel').style.display = 'none';
+  document.getElementById('pursuit-toggle-icon').textContent = 'EXPAND ▼';
+}
+
+// ══════════════════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════════════════
 renderPursuit();
+buildPursuitEntry();
 buildEntryTable();
 renderGPCards();
 gpRenderTable();
@@ -1285,45 +1488,73 @@ renderLeaderboard();
     <div class="period-badge">Auto-refreshes all tabs</div>
   </div>
 
+  <!-- Hidden file inputs — triggered by buttons below -->
+  <input type="file" id="fi-pursuit" accept=".pdf" style="display:none" onchange="dzFile(event,'pursuit')">
+  <input type="file" id="fi-wip"   accept=".xlsx,.xls" style="display:none" onchange="dzFile(event,'wip')">
+  <input type="file" id="fi-gp"    accept=".xlsx,.xls" style="display:none" onchange="dzFile(event,'gp')">
+  <input type="file" id="fi-sa"    accept=".xlsx,.xls" style="display:none" onchange="dzFile(event,'sa')">
+  <input type="file" id="fi-email" accept=".xlsx,.xls" style="display:none" onchange="dzFile(event,'email')">
+  <input type="file" id="fi-tech"  accept=".xlsx,.xls" style="display:none" onchange="dzFile(event,'tech')">
+
   <div class="upload-grid">
 
     <!-- GP Totals -->
     <div class="drop-zone" id="dz-gp" ondragover="dzDrag(event,'dz-gp')" ondragleave="dzLeave('dz-gp')" ondrop="dzDrop(event,'gp')">
-      <input class="drop-input" type="file" accept=".xlsx,.xls" onchange="dzFile(event,'gp')">
       <div class="drop-icon">📊</div>
       <div class="drop-title">GP Group Totals</div>
       <div class="drop-filename">TOTAL_GROUP_GROSS_REVIEW.xlsx</div>
-      <div style="font-size:11px;color:var(--muted)">Updates: GP Pace projected & LY totals</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:12px">Updates GP Pace projected & LY totals</div>
+      <button onclick="document.getElementById('fi-gp').click()" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Choose File</button>
       <div class="drop-status" id="dz-gp-status"></div>
     </div>
 
     <!-- SA Totals -->
     <div class="drop-zone" id="dz-sa" ondragover="dzDrag(event,'dz-sa')" ondragleave="dzLeave('dz-sa')" ondrop="dzDrop(event,'sa')">
-      <input class="drop-input" type="file" accept=".xlsx,.xls" onchange="dzFile(event,'sa')">
       <div class="drop-icon">👤</div>
       <div class="drop-title">SA Totals Report</div>
       <div class="drop-filename">TOTAL_SA_TOTALS_*.xlsx</div>
-      <div style="font-size:11px;color:var(--muted)">Updates: Advisor scorecard & leaderboard</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:12px">Updates advisor scorecard & leaderboard</div>
+      <button onclick="document.getElementById('fi-sa').click()" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Choose File</button>
       <div class="drop-status" id="dz-sa-status"></div>
     </div>
 
     <!-- Email List -->
     <div class="drop-zone" id="dz-email" ondragover="dzDrag(event,'dz-email')" ondragleave="dzLeave('dz-email')" ondrop="dzDrop(event,'email')">
-      <input class="drop-input" type="file" accept=".xlsx,.xls" onchange="dzFile(event,'email')">
       <div class="drop-icon">✉️</div>
       <div class="drop-title">Email Capture List</div>
       <div class="drop-filename">Customer_Email_List.xlsx</div>
-      <div style="font-size:11px;color:var(--muted)">Updates: Email capture % per advisor</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:12px">Updates email capture % per advisor</div>
+      <button onclick="document.getElementById('fi-email').click()" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Choose File</button>
       <div class="drop-status" id="dz-email-status"></div>
+    </div>
+
+    <!-- Infinite Pursuit PDF -->
+    <div class="drop-zone" id="dz-pursuit" ondragover="dzDrag(event,'dz-pursuit')" ondragleave="dzLeave('dz-pursuit')" ondrop="dzDrop(event,'pursuit')">
+      <div class="drop-icon">🎯</div>
+      <div class="drop-title">Infinite Pursuit Report</div>
+      <div class="drop-filename">2026_ESTIMATED_PURSUIT_*.pdf</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:12px">Updates pursuit points & all metrics</div>
+      <button onclick="document.getElementById('fi-pursuit').click()" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Choose File</button>
+      <div class="drop-status" id="dz-pursuit-status"></div>
+    </div>
+
+    <!-- WIP Report -->
+    <div class="drop-zone" id="dz-wip" ondragover="dzDrag(event,'dz-wip')" ondragleave="dzLeave('dz-wip')" ondrop="dzDrop(event,'wip')">
+      <div class="drop-icon">🔧</div>
+      <div class="drop-title">Work In Process</div>
+      <div class="drop-filename">WORK_IN_PROCESS_*.xlsx</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:12px">Updates Open ROs & Over 30 per store</div>
+      <button onclick="document.getElementById('fi-wip').click()" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Choose File</button>
+      <div class="drop-status" id="dz-wip-status"></div>
     </div>
 
     <!-- Advisor Technology -->
     <div class="drop-zone" id="dz-tech" ondragover="dzDrag(event,'dz-tech')" ondragleave="dzLeave('dz-tech')" ondrop="dzDrop(event,'tech')">
-      <input class="drop-input" type="file" accept=".xlsx,.xls" onchange="dzFile(event,'tech')">
       <div class="drop-icon">📱</div>
       <div class="drop-title">Advisor Technology</div>
       <div class="drop-filename">ADVISOR_TECHNOLOGY.xlsx</div>
-      <div style="font-size:11px;color:var(--muted)">Updates: Video sent/viewed & online pay %</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:12px">Updates video sent/viewed & online pay %</div>
+      <button onclick="document.getElementById('fi-tech').click()" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Choose File</button>
       <div class="drop-status" id="dz-tech-status"></div>
     </div>
 
