@@ -556,9 +556,10 @@ window.parseFile = parseFile;
   .pursuit-label { font-size:10px; color:var(--muted); margin-top:2px; }
   .pursuit-bar-track { height:4px; background:var(--border); border-radius:2px; overflow:hidden; margin:10px 0 8px; }
   .pursuit-bar-fill { height:100%; border-radius:2px; }
-  .pursuit-metrics { display:grid; grid-template-columns:1fr 1fr; gap:6px; border-top:1px solid var(--border); padding-top:10px; margin-top:4px; }
+  .pursuit-metrics { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; border-top:1px solid var(--border); padding-top:10px; margin-top:4px; }
   .pm-item { text-align:center; }
   .pm-label { font-size:9px; text-transform:uppercase; letter-spacing:0.5px; color:var(--muted); margin-bottom:2px; }
+  .pm-goal  { font-size:7px; color:var(--muted); opacity:0.7; display:block; font-weight:400; letter-spacing:0; text-transform:none; }
   .pm-val { font-family:'DM Mono',monospace; font-size:12px; font-weight:600; color:var(--text); }
   .pm-val.good { color:var(--green); }
   .pm-val.bad  { color:var(--red); }
@@ -663,13 +664,19 @@ window.parseFile = parseFile;
     .tab-nav { display: none !important; }
     .header-right-info { display: none !important; }
 
-    /* Show ALL panels stacked */
-    .tab-panel { display: block !important; padding: 0 14px 20px; }
+    /* Show only the 4 tabs we want, stacked */
+    .tab-panel { display: block !important; padding: 0 14px 12px; }
+    #tab-upload { display: none !important; }
 
-    /* Section breaks between panels */
-    #tab-gppace  { border-top: 2px solid #e2e6ed; padding-top: 16px; }
-    #tab-advisors { border-top: 2px solid #e2e6ed; padding-top: 16px; page-break-before: always; }
-    #tab-leaderboard { border-top: 2px solid #e2e6ed; padding-top: 16px; page-break-before: always; }
+    /* Page 1: Pursuit boxes + GP Pace boxes together */
+    #tab-pursuit { padding-bottom: 4px !important; }
+    #tab-gppace  { padding-top: 0 !important; }
+
+    /* Page 2: Advisor Scorecard on its own page */
+    #tab-advisors { page-break-before: always; }
+
+    /* Page 3: Leaderboard on its own page */
+    #tab-leaderboard { page-break-before: always; }
 
     /* Panel headers smaller */
     .panel-title { font-size: 14px !important; }
@@ -680,25 +687,46 @@ window.parseFile = parseFile;
     .cost-center-nav { display: none !important; }
     .filters         { display: none !important; }
     #entry-panel     { display: none !important; }
-    .summary-card-header[onclick] { cursor: default; }
+    #advisor-mgr-panel { display: none !important; }
+    #pursuit-entry-panel { display: none !important; }
+    .summary-card-header[onclick] { display: none !important; }
     #entry-toggle-icon { display: none !important; }
     .apply-btn { display: none !important; }
+    .period-badge { display: none !important; }
+    .legend { display: none !important; }
 
-    /* Compact cards */
+    /* Hide the pursuit detail table — just show cards */
+    #tab-pursuit .summary-card { display: none !important; }
+    #tab-pursuit .pursuit-grid { display: grid !important; }
+
+    /* Hide the GP summary table — just show cards */
+    #tab-gppace .summary-card { display: none !important; }
+    #tab-gppace .stores-grid  { display: grid !important; }
+
+    /* Compact cards — 5 across */
     .stores-grid  { grid-template-columns: repeat(5, 1fr) !important; gap: 6px !important; margin-bottom: 10px !important; }
     .pursuit-grid { grid-template-columns: repeat(5, 1fr) !important; gap: 6px !important; margin-bottom: 10px !important; }
     .store-card, .pursuit-card { padding: 10px !important; }
     .gp-amount    { font-size: 18px !important; }
     .pursuit-points { font-size: 26px !important; }
+    .pm-label { font-size: 7px !important; }
+    .pm-val { font-size: 10px !important; }
+    .pm-goal { font-size: 6px !important; }
 
-    /* Tables compact */
-    table { font-size: 9px !important; min-width: 0 !important; width: 100% !important; }
-    thead tr.group-row th { padding: 5px 6px !important; font-size: 8px !important; }
-    thead tr.sub-row th   { padding: 3px 6px !important; font-size: 7.5px !important; }
-    tbody td { padding: 5px 6px !important; }
-    tbody tr.store-hdr td { padding: 4px 8px !important; }
+    /* Advisor table — fit on one page */
+    #tab-advisors table { font-size: 8px !important; min-width: 0 !important; width: 100% !important; }
+    #tab-advisors thead tr.group-row th { padding: 4px 4px !important; font-size: 7px !important; }
+    #tab-advisors thead tr.sub-row th   { padding: 2px 4px !important; font-size: 6.5px !important; }
+    #tab-advisors tbody td { padding: 3px 4px !important; font-size: 8px !important; }
+    #tab-advisors tbody tr.store-hdr td { padding: 3px 6px !important; font-size: 8px !important; }
+    #tab-advisors tbody tr.store-total td { padding: 3px 4px !important; font-size: 7px !important; }
 
-    /* Table wrap no overflow clipping */
+    /* Leaderboard — fit on one page */
+    #tab-leaderboard table { font-size: 9px !important; min-width: 0 !important; width: 100% !important; }
+    #lb-podium { min-height: 120px !important; margin-bottom: 16px !important; }
+    #tab-leaderboard .cost-center-nav { display: none !important; }
+
+    /* Table containers no overflow clipping */
     .table-wrap   { box-shadow: none !important; border-radius: 4px !important; overflow: visible !important; }
     .table-scroll { overflow: visible !important; }
 
@@ -1007,11 +1035,11 @@ function pursuitChip(val, goal, fmt) {
   return `<span class="chip ${ok?'flat':'down'}">${fmt(val)}</span>`;
 }
 
-function pmVal(val, goal) {
-  // Card metric: red text + dot if missing, neutral otherwise
-  const miss = val < goal;
+function pmVal(displayVal, numericVal, goal) {
+  // Card metric: red text + dot if missing goal, green if meeting
+  const miss = numericVal < goal;
   const dot = miss ? '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--red);margin-right:4px;vertical-align:middle"></span>' : '';
-  return `${dot}<span style="color:${miss?'var(--red)':'var(--text2)'};font-weight:${miss?'600':'400'}">${val}</span>`;
+  return `${dot}<span style="color:${miss?'var(--red)':'var(--green)'};font-weight:600">${displayVal}</span>`;
 }
 
 function renderPursuit() {
@@ -1024,6 +1052,7 @@ function renderPursuit() {
     const GOAL = 70;
     const barColor = s.points >= GOAL ? 'var(--green)' : 'var(--red)';
     const ptColor  = s.points >= GOAL ? 'var(--green)' : 'var(--red)';
+    const fmtPct = (v) => (v > 0 ? '+' : '') + v.toFixed(1) + '%';
     grid.innerHTML += `
       <div class="pursuit-card">
         <div class="pursuit-store">${s.name}</div>
@@ -1032,11 +1061,15 @@ function renderPursuit() {
         <div class="pursuit-bar-track">
           <div class="pursuit-bar-fill" style="width:${Math.min(s.points/GOAL*100,100)}%;background:${barColor}"></div>
         </div>
-        <div class="pursuit-metrics">
-          <div class="pm-item"><div class="pm-label">GP%</div><div class="pm-val">${pmVal(s.gpPct.toFixed(1)+'%', STD.gpPct)}</div></div>
-          <div class="pm-item"><div class="pm-label">Total YoY</div><div class="pm-val">${pmVal((s.totalYoy>0?'+':'')+s.totalYoy.toFixed(1)+'%', 0, s.totalYoy)}</div></div>
-          <div class="pm-item"><div class="pm-label">Alignment</div><div class="pm-val">${pmVal(s.align.toFixed(1)+'%', STD.align, s.align)}</div></div>
-          <div class="pm-item"><div class="pm-label">Valvoline</div><div class="pm-val">${pmVal(s.valv.toFixed(1)+'%', STD.valv, s.valv)}</div></div>
+        <div class="pursuit-metrics" style="grid-template-columns:1fr 1fr 1fr">
+          <div class="pm-item"><div class="pm-label">GP% <span class="pm-goal">≥75%</span></div><div class="pm-val">${pmVal(s.gpPct.toFixed(1)+'%', s.gpPct, STD.gpPct)}</div></div>
+          <div class="pm-item"><div class="pm-label">Total YoY <span class="pm-goal">≥0%</span></div><div class="pm-val">${pmVal(fmtPct(s.totalYoy), s.totalYoy, STD.totalYoy)}</div></div>
+          <div class="pm-item"><div class="pm-label">CP GP YoY <span class="pm-goal">≥0%</span></div><div class="pm-val">${pmVal(fmtPct(s.cpYoy), s.cpYoy, STD.cpYoy)}</div></div>
+          <div class="pm-item"><div class="pm-label">Alignment <span class="pm-goal">≥10%</span></div><div class="pm-val">${pmVal(s.align.toFixed(1)+'%', s.align, STD.align)}</div></div>
+          <div class="pm-item"><div class="pm-label">Valvoline <span class="pm-goal">≥23%</span></div><div class="pm-val">${pmVal(s.valv.toFixed(1)+'%', s.valv, STD.valv)}</div></div>
+          <div class="pm-item"><div class="pm-label">Tires <span class="pm-goal">≥15%</span></div><div class="pm-val">${pmVal(s.tires.toFixed(1)+'%', s.tires, STD.tires)}</div></div>
+          <div class="pm-item"><div class="pm-label">Policy <span class="pm-goal">≤1.6%</span></div><div class="pm-val">${pmVal(s.policy.toFixed(2)+'%', s.policy <= 1.6 ? 999 : -1, 0)}</div></div>
+          <div class="pm-item"><div class="pm-label">Op Profit <span class="pm-goal">≥8%</span></div><div class="pm-val">${pmVal(s.opProfit.toFixed(1)+'%', s.opProfit, STD.opProfit)}</div></div>
         </div>
       </div>`;
 
