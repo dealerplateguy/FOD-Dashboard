@@ -5,6 +5,267 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Fixed Ops Director Dashboard — Rohrman</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js">
+
+// ══════════════════════════════════════════════════════
+// UPLOAD & PARSE
+// ══════════════════════════════════════════════════════
+const ROHRMAN_IDS = [1712, 1713, 1714, 1715, 1718];
+const STORE_NAMES = {
+  1712: 'Bob Rohrman Honda',
+  1713: 'Bob Rohrman Toyota',
+  1714: 'Bob Rohrman Kia',
+  1715: 'Bob Rohrman Hyundai',
+  1718: 'Indy Hyundai',
+};
+const STORE_KEYS = {
+  1712: 'honda',
+  1713: 'toyota',
+  1714: 'kia',
+  1715: 'hyundai',
+  1718: 'indy',
+};
+
+function addLog(msg, type='info') {
+  const log = document.getElementById('upload-log');
+  if (!log) return;
+  const line = document.createElement('div');
+  line.className = `log-line ${type}`;
+  line.textContent = new Date().toLocaleTimeString() + '  ' + msg;
+  log.insertBefore(line, log.firstChild);
+}
+
+function setZoneStatus(zoneId, msg, type) {
+  const zone = document.getElementById(zoneId);
+  const status = document.getElementById(zoneId + '-status');
+  if (!zone || !status) return;
+  zone.className = 'drop-zone ' + (type === 'ok' ? 'success' : type === 'err' ? 'error' : '');
+  status.className = 'drop-status ' + type;
+  status.textContent = msg;
+}
+
+function dzDrag(e, id) { e.preventDefault(); document.getElementById(id).classList.add('drag-over'); }
+function dzLeave(id) { document.getElementById(id).classList.remove('drag-over'); }
+function dzDrop(e, type) {
+  e.preventDefault();
+  const id = 'dz-' + (type === 'gp' ? 'gp' : type === 'sa' ? 'sa' : type === 'email' ? 'email' : 'tech');
+  dzLeave(id);
+  const file = e.dataTransfer.files[0];
+  if (file) parseFile(file, type);
+}
+function dzFile(e, type) {
+  const file = e.target.files[0];
+  if (file) parseFile(file, type);
+}
+
+function parseFile(file, type) {
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
+      if (type === 'gp')    parseGP(wb, file.name);
+      if (type === 'sa')    parseSA(wb, file.name);
+      if (type === 'email') parseEmail(wb, file.name);
+      if (type === 'tech')  parseTech(wb, file.name);
+    } catch(err) {
+      const zId = 'dz-' + (type === 'gp' ? 'gp' : type === 'sa' ? 'sa' : type === 'email' ? 'email' : 'tech');
+      setZoneStatus(zId, '✗ Parse error: ' + err.message, 'err');
+      addLog('ERROR parsing ' + file.name + ': ' + err.message, 'err');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ── PARSE GP TOTALS ──
+function parseGP(wb, filename) {
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+  let updated = 0;
+
+  rows.forEach(row => {
+    const dealerId = Number(row[0]);
+    if (!ROHRMAN_IDS.includes(dealerId)) return;
+    // Row structure: col0=dealer id, col6=projected total labor, col8=projected total YoY%
+    // G row (index 26 = 'G' days) — col4=LY total, col6=projected, col8=YoY pct
+    const proj  = Number(row[6])  || 0;
+    const ly    = Number(row[4])  || 0;
+    const yoy   = Number(row[8])  || 0;
+
+    const store = gpStores.find(s => {
+      const idMap = { honda:1712, toyota:1713, kia:1714, lafhyundai:1715, indyhyundai:1718 };
+      return idMap[s.id] === dealerId;
+    });
+    if (store && proj > 0) {
+      store.total    = proj;
+      store.lyTotal  = ly;
+      store.totalYoy = yoy * 100;
+      updated++;
+    }
+  });
+
+  if (updated > 0) {
+    renderGPCards();
+    gpRenderTable();
+    setZoneStatus('dz-gp', `✓ Updated ${updated} stores`, 'ok');
+    addLog(`GP Totals: updated ${updated} stores from ${filename}`, 'ok');
+  } else {
+    setZoneStatus('dz-gp', '⚠ No matching stores found', 'err');
+    addLog(`GP Totals: no Rohrman stores found in ${filename}`, 'err');
+  }
+}
+
+// ── PARSE SA TOTALS ──
+function parseSA(wb, filename) {
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+  if (rows.length < 2) { setZoneStatus('dz-sa','⚠ Empty file','err'); return; }
+
+  // Row 0 is headers
+  const headers = rows[0].map(h => String(h).trim().toUpperCase());
+  const col = name => headers.findIndex(h => h.includes(name));
+
+  const C = {
+    dealer:    col('DEALER ID'),
+    advisor:   col('SERVICE ADVISOR NAME'),
+    ro:        col('REPAIR ORDER TOTAL COUNT'),
+    disc:      col('TOTAL DISCOUNT'),
+    rap:       col('RAP HRS'),
+    elr:       col('ELR  AFTER'),
+    alignPct:  col('ALIGNMENT PEN'),
+    alignCnt:  col('CP ONLY REPLACE'),
+    tirePct:   col('TIRE PEN'),
+    tireCnt:   col('CP TIRE CNT'),
+    valvPct:   col('VALVOLINE PEN'),
+    valvCnt:   col('VALVOLINE TOTAL FLUSH'),
+  };
+
+  addLog(`SA columns mapped: RO=${C.ro} DISC=${C.disc} RAP=${C.rap} ELR=${C.elr}`, 'info');
+
+  const newData = [];
+  rows.slice(1).forEach(row => {
+    const dealerId = Number(row[C.dealer]);
+    if (!ROHRMAN_IDS.includes(dealerId)) return;
+    const advisorName = String(row[C.advisor] || '').trim();
+    if (!advisorName || advisorName.startsWith('NUMBER OF')) return;
+    const ro = Number(row[C.ro]) || 0;
+    if (ro < 10) return;
+
+    newData.push({
+      store:    STORE_NAMES[dealerId] || 'Unknown',
+      key:      STORE_KEYS[dealerId]  || 'honda',
+      name:     advisorName,
+      ro:       ro,
+      disc:     Math.round(Number(row[C.disc])     || 0),
+      rap:      Number(row[C.rap])     || 0,
+      elr:      Math.round(Number(row[C.elr])      || 0),
+      alignPct: (Number(row[C.alignPct]) || 0) * 100,
+      alignCnt: Math.round(Number(row[C.alignCnt]) || 0),
+      tirePct:  (Number(row[C.tirePct])  || 0) * 100,
+      tireCnt:  Math.round(Number(row[C.tireCnt])  || 0),
+      valvPct:  (Number(row[C.valvPct])  || 0) * 100,
+      valvCnt:  Math.round(Number(row[C.valvCnt])  || 0),
+      email:    saAdvisors.find(a => a.name.toUpperCase() === advisorName.toUpperCase())?.email    ?? null,
+      vidSent:  saAdvisors.find(a => a.name.toUpperCase() === advisorName.toUpperCase())?.vidSent  ?? null,
+      vidViewed:saAdvisors.find(a => a.name.toUpperCase() === advisorName.toUpperCase())?.vidViewed?? null,
+      onlinePay:saAdvisors.find(a => a.name.toUpperCase() === advisorName.toUpperCase())?.onlinePay?? null,
+    });
+  });
+
+  // Remove Lacey and Esparza
+  const filtered = newData.filter(a => 
+    !['ROBERT LACEY','ERNESTO ESPARZA'].includes(a.name.toUpperCase())
+  );
+
+  if (filtered.length > 0) {
+    saAdvisors.length = 0;
+    filtered.forEach(a => saAdvisors.push(a));
+    saRenderTable();
+    renderLeaderboard();
+    setZoneStatus('dz-sa', `✓ Loaded ${filtered.length} advisors`, 'ok');
+    addLog(`SA Totals: loaded ${filtered.length} advisors from ${filename}`, 'ok');
+  } else {
+    setZoneStatus('dz-sa', '⚠ No advisors found', 'err');
+    addLog(`SA Totals: no valid advisors found in ${filename}`, 'err');
+  }
+}
+
+// ── PARSE EMAIL ──
+function parseEmail(wb, filename) {
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+  // Find header row (has 'ADVISOR' and 'Pen %')
+  let headerRow = -1;
+  rows.forEach((r, i) => { if (String(r[4]).toUpperCase().includes('ADVISOR')) headerRow = i; });
+  if (headerRow < 0) { setZoneStatus('dz-email','⚠ Header not found','err'); return; }
+
+  let updated = 0;
+  rows.slice(headerRow + 1).forEach(row => {
+    const dealerId = Number(row[2]);
+    if (!ROHRMAN_IDS.includes(dealerId)) return;
+    const advName = String(row[4] || '').trim().toUpperCase();
+    const pen = Number(row[9]) || 0;
+    const match = saAdvisors.find(a => a.name.toUpperCase() === advName);
+    if (match && pen > 0) { match.email = +(pen * 100).toFixed(1); updated++; }
+  });
+
+  saRenderTable();
+  setZoneStatus('dz-email', `✓ Updated ${updated} advisors`, 'ok');
+  addLog(`Email: updated ${updated} advisors from ${filename}`, 'ok');
+}
+
+// ── PARSE ADVISOR TECHNOLOGY ──
+function parseTech(wb, filename) {
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+  // Find header row (row with 'DEALER ID' and 'Service Advisor')
+  let headerRow = -1;
+  rows.forEach((r, i) => { if (String(r[14]).toUpperCase().includes('DEALER ID') && String(r[32]).toUpperCase().includes('SERVICE')) headerRow = i; });
+  if (headerRow < 0) {
+    // Try alternate header detection
+    rows.forEach((r, i) => { if (String(r[0]).toUpperCase().includes('DEALER ID/RO')) headerRow = i; });
+  }
+  if (headerRow < 0) { setZoneStatus('dz-tech','⚠ Header not found','err'); addLog('Tech: header row not found','err'); return; }
+
+  // Col indices (0-based): dealer=14, advisor=32, vidSent=99, vidViewed=107, onlinePay=118
+  const aggData = {};
+  rows.slice(headerRow + 1).forEach(row => {
+    const dealerId = Number(row[14]);
+    if (!ROHRMAN_IDS.includes(dealerId)) return;
+    const adv = String(row[32] || '').trim().toUpperCase();
+    if (!adv) return;
+    const key = dealerId + '|' + adv;
+    if (!aggData[key]) aggData[key] = { vidSentSum:0, vidViewedSum:0, onlinePaySum:0, cnt:0 };
+    const vs = Number(row[99]) || 0;
+    const vv = Number(row[107]) || 0;
+    const op = Number(row[118]) || 0;
+    if (vs > 0 || vv > 0 || op > 0) {
+      aggData[key].vidSentSum   += vs;
+      aggData[key].vidViewedSum += vv;
+      aggData[key].onlinePaySum += op;
+      aggData[key].cnt++;
+    }
+  });
+
+  let updated = 0;
+  Object.entries(aggData).forEach(([key, d]) => {
+    if (d.cnt === 0) return;
+    const advName = key.split('|')[1];
+    const match = saAdvisors.find(a => a.name.toUpperCase() === advName);
+    if (match) {
+      match.vidSent   = +(d.vidSentSum   / d.cnt * 100).toFixed(1);
+      match.vidViewed = +(d.vidViewedSum / d.cnt * 100).toFixed(1);
+      match.onlinePay = +(d.onlinePaySum / d.cnt * 100).toFixed(1);
+      updated++;
+    }
+  });
+
+  saRenderTable();
+  setZoneStatus('dz-tech', `✓ Updated ${updated} advisors`, 'ok');
+  addLog(`Tech: updated ${updated} advisors from ${filename}`, 'ok');
+}
+
+</script>
 <style>
   /* ── SHARED VARIABLES ── */
   :root {
@@ -293,6 +554,35 @@
     .summary-card { box-shadow: none !important; margin-bottom: 8px !important; }
   }
 
+
+  /* ── UPLOAD TAB ── */
+  .upload-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .drop-zone {
+    background: var(--surface);
+    border: 2px dashed var(--border2);
+    border-radius: 10px;
+    padding: 28px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.15s;
+    position: relative;
+  }
+  .drop-zone:hover, .drop-zone.drag-over { border-color: var(--accent); background: var(--accent-bg); }
+  .drop-zone.success { border-color: var(--green); background: var(--green-bg); border-style: solid; }
+  .drop-zone.error   { border-color: var(--red);   background: var(--red-bg);   border-style: solid; }
+  .drop-icon { font-size: 32px; margin-bottom: 10px; }
+  .drop-title { font-weight: 700; font-size: 13px; color: var(--text); margin-bottom: 4px; }
+  .drop-filename { font-size: 11px; color: var(--muted); font-family: 'DM Mono', monospace; margin-bottom: 8px; }
+  .drop-status { font-size: 11px; font-weight: 600; margin-top: 8px; min-height: 16px; }
+  .drop-status.ok  { color: var(--green); }
+  .drop-status.err { color: var(--red); }
+  .drop-input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+  .upload-log { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; font-family: 'DM Mono', monospace; font-size: 11px; color: var(--text2); max-height: 200px; overflow-y: auto; }
+  .log-line { padding: 3px 0; border-bottom: 1px solid var(--border); }
+  .log-line.ok  { color: var(--green); }
+  .log-line.err { color: var(--red); }
+  .log-line.info{ color: var(--muted); }
+
 </style>
 </head>
 <body>
@@ -316,6 +606,9 @@
     </button>
     <button class="tab-btn" onclick="switchTab('leaderboard', this)">
       <span class="tab-icon">🏆</span> Leaderboard
+    </button>
+    <button class="tab-btn" onclick="switchTab('upload', this)">
+      <span class="tab-icon">📂</span> Upload Data
     </button>
   </div>
   <div class="header-right-info">
@@ -975,6 +1268,71 @@ renderLeaderboard();
         </thead>
         <tbody id="lb-tbody"></tbody>
       </table>
+    </div>
+  </div>
+</div>
+
+
+
+
+<!-- ══ TAB: UPLOAD DATA ══ -->
+<div class="tab-panel" id="tab-upload">
+  <div class="panel-header">
+    <div>
+      <div class="panel-title">Upload Data Files</div>
+      <div class="panel-sub">Drag & drop or click to select · Updates dashboard instantly</div>
+    </div>
+    <div class="period-badge">Auto-refreshes all tabs</div>
+  </div>
+
+  <div class="upload-grid">
+
+    <!-- GP Totals -->
+    <div class="drop-zone" id="dz-gp" ondragover="dzDrag(event,'dz-gp')" ondragleave="dzLeave('dz-gp')" ondrop="dzDrop(event,'gp')">
+      <input class="drop-input" type="file" accept=".xlsx,.xls" onchange="dzFile(event,'gp')">
+      <div class="drop-icon">📊</div>
+      <div class="drop-title">GP Group Totals</div>
+      <div class="drop-filename">TOTAL_GROUP_GROSS_REVIEW.xlsx</div>
+      <div style="font-size:11px;color:var(--muted)">Updates: GP Pace projected & LY totals</div>
+      <div class="drop-status" id="dz-gp-status"></div>
+    </div>
+
+    <!-- SA Totals -->
+    <div class="drop-zone" id="dz-sa" ondragover="dzDrag(event,'dz-sa')" ondragleave="dzLeave('dz-sa')" ondrop="dzDrop(event,'sa')">
+      <input class="drop-input" type="file" accept=".xlsx,.xls" onchange="dzFile(event,'sa')">
+      <div class="drop-icon">👤</div>
+      <div class="drop-title">SA Totals Report</div>
+      <div class="drop-filename">TOTAL_SA_TOTALS_*.xlsx</div>
+      <div style="font-size:11px;color:var(--muted)">Updates: Advisor scorecard & leaderboard</div>
+      <div class="drop-status" id="dz-sa-status"></div>
+    </div>
+
+    <!-- Email List -->
+    <div class="drop-zone" id="dz-email" ondragover="dzDrag(event,'dz-email')" ondragleave="dzLeave('dz-email')" ondrop="dzDrop(event,'email')">
+      <input class="drop-input" type="file" accept=".xlsx,.xls" onchange="dzFile(event,'email')">
+      <div class="drop-icon">✉️</div>
+      <div class="drop-title">Email Capture List</div>
+      <div class="drop-filename">Customer_Email_List.xlsx</div>
+      <div style="font-size:11px;color:var(--muted)">Updates: Email capture % per advisor</div>
+      <div class="drop-status" id="dz-email-status"></div>
+    </div>
+
+    <!-- Advisor Technology -->
+    <div class="drop-zone" id="dz-tech" ondragover="dzDrag(event,'dz-tech')" ondragleave="dzLeave('dz-tech')" ondrop="dzDrop(event,'tech')">
+      <input class="drop-input" type="file" accept=".xlsx,.xls" onchange="dzFile(event,'tech')">
+      <div class="drop-icon">📱</div>
+      <div class="drop-title">Advisor Technology</div>
+      <div class="drop-filename">ADVISOR_TECHNOLOGY.xlsx</div>
+      <div style="font-size:11px;color:var(--muted)">Updates: Video sent/viewed & online pay %</div>
+      <div class="drop-status" id="dz-tech-status"></div>
+    </div>
+
+  </div>
+
+  <div class="summary-card">
+    <div class="summary-card-header">Upload Log</div>
+    <div class="upload-log" id="upload-log">
+      <div class="log-line info">— No files uploaded yet. Drop your files above to update the dashboard. —</div>
     </div>
   </div>
 </div>
