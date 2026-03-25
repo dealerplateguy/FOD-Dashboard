@@ -100,8 +100,22 @@
   }
 
   /* ── TAB PANELS ── */
-  .tab-panel { display: none; padding: 24px; }
-  .tab-panel.active { display: block; }
+  .tab-panel { 
+    display: block;
+    padding: 24px; 
+    position: absolute;
+    left: -9999px;
+    top: -9999px;
+    visibility: hidden;
+    pointer-events: none;
+  }
+  .tab-panel.active { 
+    position: static;
+    left: auto;
+    top: auto;
+    visibility: visible;
+    pointer-events: auto;
+  }
 
   /* ── PANEL SECTION HEADER ── */
   .panel-header {
@@ -123,14 +137,8 @@
 
   /* ── PURSUIT CARDS ── */
   .pursuit-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 20px; }
-  .pursuit-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); position: relative; overflow: hidden; }
-  .pursuit-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; }
-  .pursuit-card.honda::before      { background:#cc2222; }
-  .pursuit-card.toyota::before     { background:#c8820a; }
-  .pursuit-card.kia::before        { background:#2563eb; }
-  .pursuit-card.lafhyundai::before { background:#0891b2; }
-  .pursuit-card.indyhyundai::before{ background:#7c3aed; }
-  .pursuit-store { font-size:10px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:0.8px; margin-bottom:10px; }
+  .pursuit-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+  .pursuit-store { font-size:14px; font-weight:700; color:var(--text); margin-bottom:10px; }
   .pursuit-points { font-family:'DM Mono',monospace; font-size:36px; font-weight:700; line-height:1; color:var(--text); }
   .pursuit-label { font-size:10px; color:var(--muted); margin-top:2px; }
   .pursuit-bar-track { height:4px; background:var(--border); border-radius:2px; overflow:hidden; margin:10px 0 8px; }
@@ -195,7 +203,7 @@
   .table-wrap { background:var(--surface); border:1px solid var(--border); border-radius:10px; overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,0.05); }
   .table-scroll { overflow-x:auto; }
   table { width:100%; border-collapse:collapse; font-size:12px; }
-  thead tr.group-row th { background:#1e293b; color:#cbd5e1; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:1px; padding:10px 12px; font-family:'DM Mono',monospace; border-right:1px solid #334155; text-align:center; white-space:nowrap; }
+  thead tr.group-row th { background:#1e293b; color:#cbd5e1; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:1px; padding:10px 12px; font-family:'DM Mono',monospace; border-right:1px solid #334155; text-align:center; white-space:nowrap; vertical-align:middle; }
   thead tr.group-row th.left { text-align:left; }
   thead tr.group-row th.group-divider { border-left:2px solid #475569; }
   thead tr.sub-row th { background:#f1f5f9; color:var(--muted); font-size:9.5px; font-weight:600; text-transform:uppercase; letter-spacing:0.6px; padding:6px 12px; font-family:'DM Mono',monospace; border-bottom:2px solid var(--border2); border-right:1px solid var(--border); text-align:center; white-space:nowrap; }
@@ -243,11 +251,12 @@
     .header-right-info { display: none !important; }
 
     /* Show ALL panels stacked */
-    .tab-panel { display: block !important; padding: 0 14px 20px; }
+    .tab-panel { display: block !important; padding: 0 14px 20px; position: static !important; left: auto !important; top: auto !important; visibility: visible !important; pointer-events: auto !important; }
 
     /* Section breaks between panels */
     #tab-gppace  { border-top: 2px solid #e2e6ed; padding-top: 16px; }
     #tab-advisors { border-top: 2px solid #e2e6ed; padding-top: 16px; page-break-before: always; }
+    #tab-leaderboard { border-top: 2px solid #e2e6ed; padding-top: 16px; page-break-before: always; }
 
     /* Panel headers smaller */
     .panel-title { font-size: 14px !important; }
@@ -305,6 +314,9 @@
     <button class="tab-btn" onclick="switchTab('advisors', this)">
       <span class="tab-icon">👤</span> Advisor Scorecard
     </button>
+    <button class="tab-btn" onclick="switchTab('leaderboard', this)">
+      <span class="tab-icon">🏆</span> Leaderboard
+    </button>
   </div>
   <div class="header-right-info">
     <div class="period-chip">03/01 – 03/23/26</div>
@@ -355,12 +367,17 @@
       <div class="panel-title">Gross Profit Pace</div>
       <div class="panel-sub">Projected Month-End vs Prior Year</div>
     </div>
-    <div class="period-badge">Week ending 03/23/26</div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <div style="font-size:11px;color:var(--muted);font-family:'DM Mono',monospace;background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:5px 12px">
+        📂 To update Total GP: upload <strong>TOTAL_GROUP_GROSS_REVIEW.xlsx</strong>
+      </div>
+      <div class="period-badge">Week ending 03/23/26</div>
+    </div>
   </div>
 
   <div class="summary-card">
     <div class="summary-card-header" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="toggleEntry()">
-      <span>Enter CP / Warranty / Internal — Projected &amp; LY</span>
+      <span>✏️ Enter CP / Warranty / Internal — Projected &amp; LY (click to expand)</span>
       <span id="entry-toggle-icon" style="color:var(--accent);font-size:10px;font-weight:700">EXPAND ▼</span>
     </div>
     <div id="entry-panel" style="display:none;padding:16px;overflow-x:auto">
@@ -494,47 +511,61 @@ const pursuitStores = [
 const STD = { gpPct:75, totalYoy:0, cpYoy:0, align:10, valv:23, tires:15, policy:3, opProfit:8 };
 
 function pursuitChip(val, goal, fmt) {
+  // kept for compatibility but replaced inline in renderPursuit
   const ok = val >= goal;
-  return `<span class="chip ${ok?'up':'down'}">${fmt(val)}</span>`;
+  return `<span class="chip ${ok?'flat':'down'}">${fmt(val)}</span>`;
+}
+
+function pmVal(val, goal) {
+  // Card metric: red text + dot if missing, neutral otherwise
+  const miss = val < goal;
+  const dot = miss ? '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--red);margin-right:4px;vertical-align:middle"></span>' : '';
+  return `${dot}<span style="color:${miss?'var(--red)':'var(--text2)'};font-weight:${miss?'600':'400'}">${val}</span>`;
 }
 
 function renderPursuit() {
   const grid = document.getElementById('pursuit-grid');
+  if (!grid) return;
   const tbody = document.getElementById('pursuit-tbody');
-  grid.innerHTML = '';
-  tbody.innerHTML = '';
+  if (!tbody) return;
+  if (grid) grid.innerHTML = '';
+  if (tbody) tbody.innerHTML = '';
 
   pursuitStores.forEach(s => {
-    const pct = Math.round((s.points / 100) * 100);
-    const barColor = s.points >= 70 ? 'var(--green)' : s.points >= 40 ? 'var(--accent)' : 'var(--red)';
-    grid.innerHTML += `
-      <div class="pursuit-card ${s.css}">
+    const GOAL = 70;
+    const barColor = s.points >= GOAL ? 'var(--green)' : 'var(--red)';
+    const ptColor  = s.points >= GOAL ? 'var(--green)' : 'var(--red)';
+    if (grid) grid.innerHTML += `
+      <div class="pursuit-card">
         <div class="pursuit-store">${s.name}</div>
-        <div class="pursuit-points" style="color:${s.points>=70?'var(--green)':s.points>=40?'var(--text)':'var(--red)'}">${s.points}</div>
-        <div class="pursuit-label">pursuit points <span style="color:var(--muted)">/ 100 goal</span></div>
+        <div class="pursuit-points" style="color:${ptColor}">${s.points}</div>
+        <div class="pursuit-label">pursuit points <span style="color:var(--muted)">/ ${GOAL} goal</span></div>
         <div class="pursuit-bar-track">
-          <div class="pursuit-bar-fill" style="width:${s.points}%;background:${barColor}"></div>
+          <div class="pursuit-bar-fill" style="width:${Math.min(s.points/GOAL*100,100)}%;background:${barColor}"></div>
         </div>
         <div class="pursuit-metrics">
-          <div class="pm-item"><div class="pm-label">GP%</div><div class="pm-val ${s.gpPct>=STD.gpPct?'good':''}">${s.gpPct.toFixed(1)}%</div></div>
-          <div class="pm-item"><div class="pm-label">Total YoY</div><div class="pm-val ${s.totalYoy>=0?'good':'bad'}">${s.totalYoy>0?'+':''}${s.totalYoy.toFixed(1)}%</div></div>
-          <div class="pm-item"><div class="pm-label">Alignment</div><div class="pm-val ${s.align>=STD.align?'good':''}">${s.align.toFixed(1)}%</div></div>
-          <div class="pm-item"><div class="pm-label">Valvoline</div><div class="pm-val ${s.valv>=STD.valv?'good':''}">${s.valv.toFixed(1)}%</div></div>
+          <div class="pm-item"><div class="pm-label">GP%</div><div class="pm-val">${pmVal(s.gpPct.toFixed(1)+'%', STD.gpPct)}</div></div>
+          <div class="pm-item"><div class="pm-label">Total YoY</div><div class="pm-val">${pmVal((s.totalYoy>0?'+':'')+s.totalYoy.toFixed(1)+'%', 0, s.totalYoy)}</div></div>
+          <div class="pm-item"><div class="pm-label">Alignment</div><div class="pm-val">${pmVal(s.align.toFixed(1)+'%', STD.align, s.align)}</div></div>
+          <div class="pm-item"><div class="pm-label">Valvoline</div><div class="pm-val">${pmVal(s.valv.toFixed(1)+'%', STD.valv, s.valv)}</div></div>
         </div>
       </div>`;
 
     const p = n => n.toFixed(1) + '%';
-    tbody.innerHTML += `<tr>
-      <td class="left"><div style="display:flex;align-items:center;gap:8px"><span class="store-dot dot-${s.css}"></span>${s.name}</div></td>
-      <td class="num"><strong style="color:${s.points>=70?'var(--green)':s.points<40?'var(--red)':'var(--text2)'}">${s.points}</strong></td>
-      <td class="num">${pursuitChip(s.gpPct, STD.gpPct, p)}</td>
-      <td class="num">${pursuitChip(s.totalYoy, 0, v=>(v>0?'+':'')+p(v))}</td>
-      <td class="num">${pursuitChip(s.cpYoy, 0, v=>(v>0?'+':'')+p(v))}</td>
-      <td class="num">${pursuitChip(s.align, STD.align, p)}</td>
-      <td class="num">${pursuitChip(s.valv, STD.valv, p)}</td>
-      <td class="num">${pursuitChip(s.tires, STD.tires, p)}</td>
-      <td class="num">${pursuitChip(s.policy, 0, v => v.toFixed(1)+'%')}</td>
-      <td class="num">${pursuitChip(s.opProfit, STD.opProfit, p)}</td>
+    // Table: red dot on miss only
+    const rDot = (v, g) => v < g ? '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--red);margin-right:4px;vertical-align:middle"></span>' : '';
+    const rCell = (v, g, fmt) => `<td class="num"><div class="val-wrap">${rDot(v,g)}<span style="color:${v<g?'var(--red)':'var(--text2)'};${v<g?'font-weight:600':''}">${fmt(v)}</span></div></td>`;
+    if (tbody) tbody.innerHTML += `<tr>
+      <td class="left">${s.name}</td>
+      <td class="num"><strong style="color:${s.points>=70?'var(--green)':'var(--red)'}">${s.points}</strong></td>
+      ${rCell(s.gpPct,    STD.gpPct,    p)}
+      ${rCell(Math.max(s.totalYoy,0), 0, v=>(s.totalYoy>0?'+':'')+p(s.totalYoy))}
+      ${rCell(Math.max(s.cpYoy,0),    0, v=>(s.cpYoy>0?'+':'')+p(s.cpYoy))}
+      ${rCell(s.align,    STD.align,    p)}
+      ${rCell(s.valv,     STD.valv,     p)}
+      ${rCell(s.tires,    STD.tires,    p)}
+      ${rCell(s.policy>=0?0:99, 0,      v=>p(s.policy))}
+      ${rCell(s.opProfit, STD.opProfit, p)}
     </tr>`;
   });
 }
@@ -571,13 +602,14 @@ let gpCurrentCC = 'all';
 
 function renderGPCards() {
   const grid = document.getElementById('stores-grid');
-  grid.innerHTML = '';
+  if (!grid) return;
+  if (grid) grid.innerHTML = '';
   gpStores.forEach(s => {
     const d = gpDir(s.totalYoy);
     const pw = Math.min(Math.abs(s.totalYoy)*3,100);
     const varAmt = s.total - s.lyTotal;
     const varStr = (varAmt>=0?'+':'-')+'$'+Math.abs(Math.round(varAmt)).toLocaleString();
-    grid.innerHTML += `
+    if (grid) grid.innerHTML += `
       <div class="store-card ${s.cssClass}">
         <div class="card-store-name"><span class="store-dot dot-${s.cssClass}"></span>${s.name}</div>
         <div class="gp-total-row">
@@ -606,6 +638,7 @@ function setCC(btn,cc){gpCurrentCC=cc;document.querySelectorAll('.cc-btn').forEa
 
 function gpRenderTable() {
   const tbody = document.getElementById('gp-summary-tbody');
+  if (!tbody) return;
   let tT=0,lyT=0,tCP=0,lyCP=0,tW=0,lyW=0,tI=0,lyI=0, rows='';
   gpStores.forEach(s=>{
     tT+=s.total;lyT+=s.lyTotal;tCP+=s.cp;lyCP+=s.lyCp;tW+=s.warranty;lyW+=s.lyWarranty;tI+=s.internal;lyI+=s.lyInternal;
@@ -628,14 +661,15 @@ function gpRenderTable() {
     <td class="num">${gpFull$(tW)}</td><td class="num"><span class="chip ${gpDir(gW)}">${gpArrow(gW)} ${gpPct(gW)}</span></td>
     <td class="num">${gpFull$(tI)}</td><td class="num"><span class="chip ${gpDir(gI)}">${gpArrow(gI)} ${gpPct(gI)}</span></td>
   </tr>`;
-  tbody.innerHTML = rows;
+  if (tbody) tbody.innerHTML = rows;
 }
 
 function buildEntryTable() {
   const tbody = document.getElementById('entry-tbody');
-  tbody.innerHTML = '';
+  if (!tbody) return;
+  if (tbody) tbody.innerHTML = '';
   gpStores.forEach((s,i)=>{
-    tbody.innerHTML+=`<tr style="border-bottom:1px solid var(--border)">
+    if (tbody) tbody.innerHTML+=`<tr style="border-bottom:1px solid var(--border)">
       <td style="padding:8px 10px;font-weight:500;white-space:nowrap"><span class="store-dot dot-${s.cssClass}" style="vertical-align:middle;margin-right:6px"></span>${s.name}</td>
       <td style="padding:6px 8px"><input class="entry-input" id="cp_${i}"    type="number" placeholder="0" value="${s.cp||''}"></td>
       <td style="padding:6px 8px"><input class="entry-input" id="lycp_${i}"  type="number" placeholder="0" value="${s.lyCp||''}"></td>
@@ -647,7 +681,7 @@ function buildEntryTable() {
   });
 }
 
-function toggleEntry(){const p=document.getElementById('entry-panel');const open=p.style.display==='none';p.style.display=open?'block':'none';document.getElementById('entry-toggle-icon').textContent=open?'COLLAPSE ▲':'EXPAND ▼';}
+function toggleEntry(){const p=document.getElementById('entry-panel');const open=p.style.display==='none';p.style.display=open?'block':'none';(document.getElementById('entry-toggle-icon')||{})['textContent']=open?'COLLAPSE ▲':'EXPAND ▼';}
 
 function applyEntries(){
   gpStores.forEach((s,i)=>{
@@ -660,7 +694,7 @@ function applyEntries(){
   });
   renderGPCards();gpRenderTable();
   document.getElementById('entry-panel').style.display='none';
-  document.getElementById('entry-toggle-icon').textContent='EXPAND ▼';
+  (document.getElementById('entry-toggle-icon')||{})['textContent']='EXPAND ▼';
 }
 
 // ══════════════════════════════════════════════════════
@@ -722,6 +756,7 @@ let saFilter = 'all';
 
 function saRenderTable() {
   const tbody = document.getElementById('sa-tbody');
+  if (!tbody) return;
   const stores = [...new Set(saAdvisors.map(a=>a.store))];
   let html = '';
   stores.forEach(store => {
@@ -765,7 +800,7 @@ function saRenderTable() {
       <td class="num">${avg('onlinePay').toFixed(1)}%</td>
     </tr>`;
   });
-  tbody.innerHTML = html;
+  if (tbody) tbody.innerHTML = html;
 }
 
 function filterStore(btn, key) {
@@ -776,6 +811,116 @@ function filterStore(btn, key) {
 }
 
 // ══════════════════════════════════════════════════════
+// LEADERBOARD (inline to share saAdvisors)
+// ══════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════
+// LEADERBOARD
+// ══════════════════════════════════════════════════════
+const lbAdvisors = saAdvisors.map(a => ({
+  ...a,
+  combined: a.alignCnt + a.tireCnt + a.valvCnt
+})).filter(a => a.combined > 0 || a.alignCnt > 0 || a.tireCnt > 0 || a.valvCnt > 0);
+
+const storeShort = {
+  'Bob Rohrman Honda':   'Honda',
+  'Bob Rohrman Toyota':  'Toyota',
+  'Bob Rohrman Kia':     'Kia',
+  'Bob Rohrman Hyundai': 'Hyundai',
+  'Indy Hyundai':        'Indy Hyu.',
+};
+
+const storeColor = {
+  honda:    '#cc2222',
+  toyota:   '#c8820a',
+  kia:      '#2563eb',
+  hyundai:  '#0891b2',
+  indy:     '#7c3aed',
+};
+
+let lbMode = 'combined';
+
+function lbSortKey(a) {
+  if (lbMode === 'align') return a.alignCnt;
+  if (lbMode === 'tire')  return a.tireCnt;
+  if (lbMode === 'valv')  return a.valvCnt;
+  return a.combined;
+}
+
+const medals = ['🥇','🥈','🥉'];
+const podiumHeights = [130, 100, 80];
+const podiumColors  = ['#1e293b','#475569','#64748b'];
+
+function renderLeaderboard() {
+  const sorted = [...lbAdvisors].sort((a,b) => lbSortKey(b) - lbSortKey(a));
+
+  // Update table header
+  const labels = { combined:'Combined Service Menu Count', align:'Alignment Count', tire:'Tire Count', valv:'Valvoline Count' };
+  const lbHeader = document.getElementById('lb-table-header'); if (lbHeader) if (lbHeader) lbHeader.textContent = 'Full Rankings · ' + labels[lbMode];
+
+  // Podium — top 3
+  const podium = document.getElementById('lb-podium');
+  if (!podium) return;
+  const top3 = sorted.slice(0,3);
+  // Reorder for visual: 2nd | 1st | 3rd
+  const order = top3.length >= 3 ? [top3[1], top3[0], top3[2]] : top3.length === 2 ? [top3[1], top3[0]] : top3;
+  const orderRanks = top3.length >= 3 ? [2,1,3] : top3.length === 2 ? [2,1] : [1];
+
+  if (podium) podium.innerHTML = '';
+  order.forEach((a, oi) => {
+    if (!a) return;
+    const rank = orderRanks[oi];
+    const val  = lbSortKey(a);
+    const h    = podiumHeights[rank-1];
+    const mc   = podiumColors[rank-1];
+    const sc   = storeColor[a.key] || '#64748b';
+    if (podium) podium.innerHTML += `
+      <div style="display:flex;flex-direction:column;align-items:center;gap:0;flex:1;max-width:180px">
+        <div style="font-size:${rank===1?'28px':'22px'}">${medals[rank-1]}</div>
+        <div style="font-weight:700;font-size:${rank===1?'13px':'12px'};text-align:center;margin:6px 0 2px;color:var(--text)">${a.name}</div>
+        <div style="font-size:10px;color:var(--muted);font-weight:500;margin-bottom:8px">${storeShort[a.store]||a.store}</div>
+        <div style="font-family:'DM Mono',monospace;font-size:${rank===1?'32px':'24px'};font-weight:700;color:${mc};line-height:1">${val}</div>
+        <div style="font-size:9px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px">${lbMode==='combined'?'combined':lbMode==='align'?'alignments':lbMode==='tire'?'tires':'valvoline'}</div>
+        <div style="width:100%;height:${h}px;background:${mc}22;border:2px solid ${mc};border-bottom:none;border-radius:6px 6px 0 0;display:flex;align-items:flex-start;justify-content:center;padding-top:8px">
+          <span style="font-size:${rank===1?'20px':'16px'};font-weight:800;color:${mc}">#${rank}</span>
+        </div>
+      </div>`;
+  });
+
+  // Full table
+  const tbody = document.getElementById('lb-tbody');
+  if (!tbody) return;
+  if (tbody) tbody.innerHTML = '';
+  sorted.forEach((a, idx) => {
+    const rank = idx + 1;
+    const val  = lbSortKey(a);
+    const isTop3 = rank <= 3;
+    const rankDisplay = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`;
+    const sc = storeColor[a.key] || '#64748b';
+    const rowBg = rank === 1 ? 'background:#fffbeb' : rank === 2 ? 'background:#f8fafc' : rank === 3 ? 'background:#fdf8f3' : '';
+
+    if (tbody) tbody.innerHTML += `<tr style="${rowBg}">
+      <td style="text-align:center;font-size:${isTop3?'16px':'12px'};font-weight:700;color:var(--text2)">${rankDisplay}</td>
+      <td class="left"><span style="font-weight:600;color:var(--text)">${a.name}</span></td>
+      <td class="num"><span style="font-size:10px;font-weight:600;color:${sc};background:${sc}15;padding:2px 8px;border-radius:4px">${storeShort[a.store]||a.store}</span></td>
+      <td class="num"><strong style="font-size:14px;color:${isTop3?podiumColors[rank-1]:'var(--text)'}">${a.combined}</strong></td>
+      <td class="num" style="color:var(--green);font-weight:${a.alignCnt===Math.max(...sorted.map(x=>x.alignCnt))?'700':'400'}">${a.alignCnt}</td>
+      <td class="num" style="color:var(--accent);font-weight:${a.tireCnt===Math.max(...sorted.map(x=>x.tireCnt))?'700':'400'}">${a.tireCnt}</td>
+      <td class="num" style="color:#7c3aed;font-weight:${a.valvCnt===Math.max(...sorted.map(x=>x.valvCnt))?'700':'400'}">${a.valvCnt}</td>
+      <td class="num" style="color:var(--muted)">${a.alignPct.toFixed(1)}%</td>
+      <td class="num" style="color:var(--muted)">${a.tirePct.toFixed(1)}%</td>
+      <td class="num" style="color:var(--muted)">${a.valvPct.toFixed(1)}%</td>
+    </tr>`;
+  });
+}
+
+function lbFilter(btn, mode) {
+  lbMode = mode;
+  document.querySelectorAll('#lb-filters .cc-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderLeaderboard();
+}
+
+// ══════════════════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════════════════
 renderPursuit();
@@ -783,6 +928,58 @@ buildEntryTable();
 renderGPCards();
 gpRenderTable();
 saRenderTable();
+renderLeaderboard();
 </script>
+
+<!-- ══ TAB: LEADERBOARD ══ -->
+<div class="tab-panel" id="tab-leaderboard">
+  <div class="panel-header">
+    <div>
+      <div class="panel-title">Service Menu Leaderboard</div>
+      <div class="panel-sub">Alignment + Tires + Valvoline combined count · March 2026 MTD</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <div class="period-badge">03/01 – 03/23/26</div>
+    </div>
+  </div>
+
+  <!-- Category toggles -->
+  <div class="cost-center-nav" id="lb-filters">
+    <button class="cc-btn active" onclick="lbFilter(this,'combined')">🏆 Combined</button>
+    <button class="cc-btn" onclick="lbFilter(this,'align')">Alignment</button>
+    <button class="cc-btn" onclick="lbFilter(this,'tire')">Tires</button>
+    <button class="cc-btn" onclick="lbFilter(this,'valv')">Valvoline</button>
+  </div>
+
+  <!-- Podium -->
+  <div id="lb-podium" style="display:flex;align-items:flex-end;justify-content:center;gap:12px;margin-bottom:28px;min-height:160px"></div>
+
+  <!-- Full rankings table -->
+  <div class="summary-card">
+    <div class="summary-card-header" id="lb-table-header">Full Rankings · Combined Service Menu Count</div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr class="group-row">
+            <th style="width:44px;text-align:center">Rank</th>
+            <th class="left">Advisor</th>
+            <th>Store</th>
+            <th>Combined</th>
+            <th>Alignment</th>
+            <th>Tires</th>
+            <th>Valvoline</th>
+            <th>Align %</th>
+            <th>Tire %</th>
+            <th>Valv %</th>
+          </tr>
+        </thead>
+        <tbody id="lb-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+
+
 </body>
 </html>
