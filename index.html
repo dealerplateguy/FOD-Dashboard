@@ -656,9 +656,14 @@ window.parseFile = parseFile;
   .total-row td { font-weight:700; background:#f0f4ff; border-top:2px solid #c3d3f7; }
 
   /* ── PRINT ── */
+  @page { 
+    size: landscape; 
+    margin: 0.3in;
+  }
+
   @media print {
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-    body { background: #fff !important; font-size: 10px; padding: 0; }
+    body { background: #fff !important; font-size: 10px; padding: 0; margin: 0; }
 
     .global-header { position: static; background: #1e293b !important; padding: 8px 16px; box-shadow: none; margin-bottom: 12px; }
     .tab-nav { display: none !important; }
