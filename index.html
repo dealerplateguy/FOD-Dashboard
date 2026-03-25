@@ -1166,8 +1166,8 @@ function renderGPCards() {
       <div class="store-card ${s.cssClass}">
         <div class="card-store-name"><span class="store-dot dot-${s.cssClass}"></span>${s.name}</div>
         <div class="gp-amount">${gpFmt$(s.total)}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px">LY ${gpFull$(s.lyTotal)}</div>
-        <div class="yoy-badge ${d}" style="margin-top:6px">${gpArrow(s.totalYoy)} ${gpPct(s.totalYoy)} YoY <span style="font-size:11px;color:${varAmt>=0?'var(--green)':'var(--red)'};font-weight:600">${varStr}</span></div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">LY ${gpFmt$(s.lyTotal)}</div>
+        <div class="yoy-badge ${d}" style="margin-top:6px">${gpArrow(s.totalYoy)} ${gpPct(s.totalYoy)} YoY <span style="font-size:11px;color:${varAmt>=0?'var(--green)':'var(--red)'};font-weight:600">${(varAmt>=0?'+':'-')}$${Math.round(Math.abs(varAmt)/1000)}k</span></div>
         <div class="pace-bar-track"><div class="pace-bar-fill ${d}" style="width:${pw}%"></div></div>
         ${openRoHtml}
         <div class="cc-breakdown">${renderGPCC(s)}</div>
