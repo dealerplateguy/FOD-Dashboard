@@ -144,9 +144,11 @@ function parseSA(wb, filename) {
     tireCnt:   col('CP TIRE CNT'),
     valvPct:   col('VALVOLINE PEN'),
     valvCnt:   col('VALVOLINE TOTAL FLUSH'),
+    cpHrs:     col('CUSTOMER SOLD HOURS'),
+    warrHrs:   col('WARRANTY SOLD HOURS'),
   };
 
-  upLog(`SA columns mapped: RO=${C.ro} DISC=${C.disc} RAP=${C.rap} ELR=${C.elr}`, 'info');
+  upLog(`SA columns mapped: RO=${C.ro} DISC=${C.disc} RAP=${C.rap} ELR=${C.elr} cpHrs=${C.cpHrs} warrHrs=${C.warrHrs}`, 'info');
 
   const newData = [];
   rows.slice(1).forEach(row => {
@@ -165,6 +167,8 @@ function parseSA(wb, filename) {
       disc:     Math.round(Number(row[C.disc])     || 0),
       rap:      Number(row[C.rap])     || 0,
       elr:      Math.round(Number(row[C.elr])      || 0),
+      cpHrs:    C.cpHrs >= 0 ? Math.round((Number(row[C.cpHrs]) || 0) * 10) / 10 : null,
+      warrHrs:  C.warrHrs >= 0 ? Math.round((Number(row[C.warrHrs]) || 0) * 10) / 10 : null,
       alignPct: (Number(row[C.alignPct]) || 0) * 100,
       alignCnt: Math.round(Number(row[C.alignCnt]) || 0),
       tirePct:  (Number(row[C.tirePct])  || 0) * 100,
@@ -988,6 +992,8 @@ window.parseFile = parseFile;
             <th class="left" rowspan="2" style="min-width:160px">Advisor</th>
             <th rowspan="2">RO Count<br><span style="font-weight:400;opacity:.65">Goal 170</span></th>
             <th rowspan="2">Open<br>ROs</th>
+            <th rowspan="2">CP<br>Hrs</th>
+            <th rowspan="2">Warr<br>Hrs</th>
             <th rowspan="2">RAP<br>Hrs/RO<br><span style="font-weight:400;opacity:.65">Goal 1.5</span></th>
             <th rowspan="2">Discount<br><span style="font-weight:400;opacity:.65">Total $</span></th>
             <th rowspan="2">ELR<br>After Disc</th>
@@ -1319,12 +1325,14 @@ function saRenderTable() {
     const rows = active.filter(a=>a.store===store);
     if(rows.length === 0) return;
     if(saFilter!=='all' && !rows[0].key.includes(saFilter)) return;
-    html += `<tr class="store-hdr"><td colspan="17">${store}</td></tr>`;
+    html += `<tr class="store-hdr"><td colspan="19">${store}</td></tr>`;
     rows.forEach(a => {
       html += `<tr>
         <td class="left"><span class="adv-name">${a.name}</span></td>
         ${saRoCell(a.ro)}
         <td class="num" style="color:${(a.openRo||0)>0?'var(--text2)':'var(--muted)'}">${a.openRo??'—'}</td>
+        <td class="num" style="color:var(--text2)">${a.cpHrs!==null&&a.cpHrs!==undefined?a.cpHrs.toFixed(1):'—'}</td>
+        <td class="num" style="color:var(--text2)">${a.warrHrs!==null&&a.warrHrs!==undefined?a.warrHrs.toFixed(1):'—'}</td>
         ${saCell(a.rap,       SA_B.rap,      saDec)}
         ${saPlain(a.disc,     saDlr)}
         ${saPlain(a.elr>0?a.elr:null, v=>'$'+Math.round(v))}
@@ -1347,6 +1355,8 @@ function saRenderTable() {
       <td>Store Avg / Total</td>
       <td class="num">${sum('ro')} ROs</td>
       <td class="num">${sum('openRo')} open</td>
+      <td class="num">${sum('cpHrs').toFixed(1)}</td>
+      <td class="num">${sum('warrHrs').toFixed(1)}</td>
       <td class="num">${avg('rap').toFixed(2)}</td>
       <td class="num">$${sum('disc').toLocaleString()}</td>
       <td class="num">$${Math.round(avg('elr'))}</td>
@@ -1525,13 +1535,11 @@ function renderLeaderboard() {
       <td style="text-align:center;font-size:${isTop3?'16px':'12px'};font-weight:700;color:var(--text2)">${rankDisplay}</td>
       <td class="left"><span style="font-weight:600;color:var(--text)">${a.name}</span></td>
       <td class="num"><span style="font-size:10px;font-weight:600;color:${sc};background:${sc}15;padding:2px 8px;border-radius:4px">${storeShort[a.store]||a.store}</span></td>
+      <td class="num" style="font-weight:600">${a.rap.toFixed(2)}</td>
       <td class="num"><strong style="font-size:14px;color:${isTop3?podiumColors[rank-1]:'var(--text)'}">${a.combined}</strong></td>
-      <td class="num" style="color:var(--green);font-weight:${a.alignCnt===Math.max(...top10.map(x=>x.alignCnt))?'700':'400'}">${a.alignCnt}</td>
-      <td class="num" style="color:var(--accent);font-weight:${a.tireCnt===Math.max(...top10.map(x=>x.tireCnt))?'700':'400'}">${a.tireCnt}</td>
-      <td class="num" style="color:#7c3aed;font-weight:${a.valvCnt===Math.max(...top10.map(x=>x.valvCnt))?'700':'400'}">${a.valvCnt}</td>
-      <td class="num" style="color:var(--muted)">${a.alignPct.toFixed(1)}%</td>
-      <td class="num" style="color:var(--muted)">${a.tirePct.toFixed(1)}%</td>
-      <td class="num" style="color:var(--muted)">${a.valvPct.toFixed(1)}%</td>
+      <td class="num"><span style="font-weight:600;color:var(--green)">${a.alignCnt}</span> <span style="color:var(--muted);font-size:10px">/ ${a.alignPct.toFixed(1)}%</span></td>
+      <td class="num"><span style="font-weight:600;color:var(--accent)">${a.tireCnt}</span> <span style="color:var(--muted);font-size:10px">/ ${a.tirePct.toFixed(1)}%</span></td>
+      <td class="num"><span style="font-weight:600;color:#7c3aed">${a.valvCnt}</span> <span style="color:var(--muted);font-size:10px">/ ${a.valvPct.toFixed(1)}%</span></td>
     </tr>`;
   });
 }
@@ -1709,13 +1717,11 @@ window.addEventListener('DOMContentLoaded', initDashboard);
             <th style="width:44px;text-align:center">Rank</th>
             <th class="left">Advisor</th>
             <th>Store</th>
+            <th>Hrs/RO</th>
             <th>Combined</th>
             <th>Alignment</th>
             <th>Tires</th>
             <th>Valvoline</th>
-            <th>Align %</th>
-            <th>Tire %</th>
-            <th>Valv %</th>
           </tr>
         </thead>
         <tbody id="lb-tbody"></tbody>
