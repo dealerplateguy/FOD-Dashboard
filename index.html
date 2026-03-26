@@ -1686,10 +1686,10 @@ function renderLeaderboard() {
       if (INVERSE_METRICS.includes(m)) pct = 100 - pct;
       score += pct * weights[m];
     });
-    // CSI Bonus: +5 points if advisor has CSI pass
+    // CSI Bonus: +10 points if advisor has CSI pass
     const csiList = getCsiAdvisors();
     a.csiPass = csiList.includes(a.name.toUpperCase());
-    if (a.csiPass) score += 5;
+    if (a.csiPass) score += 10;
     a.powerScore = Math.round(Math.min(score, 100));
   });
   
@@ -1752,7 +1752,7 @@ function renderLeaderboard() {
       <td style="text-align:left"><span style="font-weight:600;color:var(--text)">${a.name}</span></td>
       <td style="text-align:center;padding:4px 6px">${storeLogo[a.store]||a.store}</td>
       <td style="text-align:center;font-weight:800;font-size:14px;color:${psColor};background:#1e293b0a;border-radius:4px">${a.powerScore}</td>
-      <td style="text-align:center"><button onclick="toggleCsi('${a.name.replace(/'/g,"\\'")}')" style="border:none;border-radius:4px;padding:2px 8px;font-size:10px;font-weight:700;cursor:pointer;${a.csiPass?'background:#dcfce7;color:#16a34a':'background:#fee2e2;color:#dc2626'}">${a.csiPass?'✓ YES':'✗ NO'}</button></td>
+      <td style="text-align:center"><button onclick="toggleCsi('${a.name.replace(/'/g,"\\'")}')" style="border:none;border-radius:4px;padding:3px 8px;font-size:10px;font-weight:700;cursor:pointer;${a.csiPass?'background:#dcfce7;color:#16a34a':'background:#fee2e2;color:#dc2626'}">${a.csiPass?'✓ +10%':'✗'}</button></td>
       <td style="text-align:center;font-weight:600">${a.ro}</td>
       <td style="text-align:center;font-weight:700;color:${(a.openRo||0)>20?'var(--red)':(a.openRo||0)>10?'var(--text)':'var(--green)'}">${a.openRo||0}</td>
       <td style="text-align:center;font-weight:600">${cpH}</td>
@@ -1962,7 +1962,7 @@ window.addEventListener('DOMContentLoaded', initDashboard);
   <div class="panel-header">
     <div>
       <div class="panel-title">Advisor of the Month Leaderboard</div>
-      <div class="panel-sub">CP Hrs 20% · Open ROs 15% · Warr Hrs 15% · ROs 10% · Hrs/RO 10% · Menu 10% · Valvoline 8% · Align 6% · Tires 6%</div>
+      <div class="panel-sub">CP Hrs 20% · Open ROs 15% · Warr Hrs 15% · ROs 10% · Hrs/RO 10% · Menu 10% · Valv 8% · Align 6% · Tires 6% · CSI +10% Bonus</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center">
       <div class="period-badge data-date-badge"></div>
@@ -1991,13 +1991,13 @@ window.addEventListener('DOMContentLoaded', initDashboard);
             <th style="text-align:left">Advisor</th>
             <th>Store</th>
             <th style="background:#1e293b;color:#fff;border-radius:4px">Power<br>Score</th>
-            <th>CSI</th>
+            <th style="background:#0f9b58;color:#fff;border-radius:4px;font-size:9px">CSI<br>+10%</th>
             <th>ROs</th>
             <th style="color:var(--red)">Open<br>ROs</th>
             <th>CP<br>Hrs</th>
             <th>Warr<br>Hrs</th>
             <th>Hrs/RO</th>
-            <th>Combined</th>
+            <th>TTL Align/<br>Tire/Valv<br>Units</th>
             <th>Alignment</th>
             <th>Tires</th>
             <th>Valvoline</th>
