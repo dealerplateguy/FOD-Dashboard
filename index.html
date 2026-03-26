@@ -359,19 +359,25 @@ function parsePursuit(file) {
         // Also parse page 2 (YTD) if available
         if (pdf.numPages >= 1) {
           try {
-            // YTD data is in the lower half of page 1 (after "YTD 2025" header)
-            // Look for YTD lines in the same extracted text
-            let ytdSection = false;
+            // YTD data: second appearance of each store in the PDF text
+            // Track which stores we already parsed in MTD
+            const ytdSeen = {};
+            let pastMtdSection = false;
             let ytdUpdated = 0;
             lines.forEach(line => {
-              if (line.toUpperCase().includes('YTD')) ytdSection = true;
-              if (!ytdSection) return;
+              // Look for the YTD header marker (e.g., "YTD 2025" or "YEAR TO DATE")
+              const upper = line.toUpperCase();
+              if (upper.includes('YTD') && (upper.includes('20') || upper.includes('YEAR'))) pastMtdSection = true;
+              if (!pastMtdSection) return;
+              
               const lower = line.toLowerCase();
               let storeIdx = -1;
               for (const [name, idx] of Object.entries(PURSUIT_STORE_MAP)) {
                 if (lower.includes(name)) { storeIdx = idx; break; }
               }
               if (storeIdx < 0) return;
+              if (ytdSeen[storeIdx]) return; // already got YTD for this store
+              
               const nums = line.match(/-?\d+\.\d+%?|-?\d+%?/g);
               if (!nums || nums.length < 9) return;
               const allNums = nums.map(n => parseFloat(String(n).replace('%', '')));
@@ -386,6 +392,13 @@ function parsePursuit(file) {
               s.ytd.tires    = allNums[6];
               s.ytd.policy   = allNums[7];
               s.ytd.opProfit = allNums[8];
+              // Also grab YTD points
+              let ptVal = null;
+              for (let j = 9; j < allNums.length; j++) {
+                if (Number.isInteger(allNums[j]) && allNums[j] >= 0 && allNums[j] <= 100) { ptVal = allNums[j]; break; }
+              }
+              if (ptVal !== null) s.ytd.points = ptVal;
+              ytdSeen[storeIdx] = true;
               ytdUpdated++;
             });
             if (ytdUpdated > 0) upLog('Pursuit: YTD data updated for ' + ytdUpdated + ' stores', 'ok');
@@ -1170,16 +1183,16 @@ function switchTab(id, btn) {
 // INFINITE PURSUIT DATA
 // ══════════════════════════════════════════════════════
 const pursuitStores = [
-  { name:'Bob Rohrman Honda',    css:'honda',      points:45,  gpPct:75.26, totalYoy:-0.89, cpRoYoy:16.12, cpYoy:44.58, align:7.53,  valv:40.43, tires:13.83, policy:0.20, opProfit:35.00,
-    ytd:{ points:40, gpPct:75.13, totalYoy:-8.83, cpRoYoy:1.68, cpYoy:14.17, align:9.74, valv:40.92, tires:18.15, policy:1.01, opProfit:18.33 }},
-  { name:'Bob Rohrman Toyota',   css:'toyota',     points:60,  gpPct:76.78, totalYoy:14.23, cpRoYoy:27.07, cpYoy:5.79,  align:9.00,  valv:30.29, tires:8.53,  policy:0.70, opProfit:30.00,
-    ytd:{ points:40, gpPct:76.70, totalYoy:3.90, cpRoYoy:14.90, cpYoy:-0.12, align:10.99, valv:29.54, tires:14.13, policy:1.59, opProfit:19.02 }},
-  { name:'Bob Rohrman Kia',      css:'kia',        points:70,  gpPct:75.65, totalYoy:21.26, cpRoYoy:16.49, cpYoy:24.48, align:10.53, valv:30.70, tires:16.40, policy:0.38, opProfit:10.00,
-    ytd:{ points:65, gpPct:75.84, totalYoy:28.49, cpRoYoy:17.88, cpYoy:43.47, align:12.88, valv:30.54, tires:14.53, policy:1.55, opProfit:7.47 }},
-  { name:'Bob Rohrman Hyundai',  css:'lafhyundai', points:100, gpPct:77.53, totalYoy:34.40, cpRoYoy:10.76, cpYoy:10.53, align:13.06, valv:26.12, tires:15.56, policy:-0.06,opProfit:10.00,
-    ytd:{ points:90, gpPct:77.07, totalYoy:31.65, cpRoYoy:7.11, cpYoy:15.57, align:13.40, valv:21.38, tires:11.89, policy:0.13, opProfit:13.27 }},
-  { name:'Indy Hyundai',         css:'indyhyundai',points:15,  gpPct:77.22, totalYoy:-9.52, cpRoYoy:5.62,  cpYoy:-35.43,align:7.66,  valv:13.14, tires:74.57, policy:1.91, opProfit:10.00,
-    ytd:{ points:30, gpPct:76.08, totalYoy:7.02, cpRoYoy:4.77, cpYoy:-12.04, align:7.70, valv:14.84, tires:37.18, policy:1.90, opProfit:8.05 }},
+  { name:'Bob Rohrman Honda',    css:'honda',      points:45,  gpPct:75.28, totalYoy:-2.11, cpRoYoy:18.23, cpYoy:44.17, align:8.05,  valv:39.64, tires:14.11, policy:0.19, opProfit:30.06, opGoal:35,
+    ytd:{ points:40, gpPct:75.13, totalYoy:-9.26, cpRoYoy:2.41, cpYoy:14.05, align:9.87, valv:40.63, tires:18.18, policy:1.00, opProfit:17.95 }},
+  { name:'Bob Rohrman Toyota',   css:'toyota',     points:60,  gpPct:76.92, totalYoy:15.82, cpRoYoy:29.87, cpYoy:7.63,  align:9.67,  valv:30.79, tires:8.57,  policy:0.71, opProfit:25.79, opGoal:30,
+    ytd:{ points:40, gpPct:76.75, totalYoy:4.43, cpRoYoy:15.88, cpYoy:0.52, align:11.17, valv:29.73, tires:14.00, policy:1.58, opProfit:19.43 }},
+  { name:'Bob Rohrman Kia',      css:'kia',        points:70,  gpPct:75.79, totalYoy:23.21, cpRoYoy:16.23, cpYoy:23.44, align:10.61, valv:31.28, tires:18.95, policy:0.39, opProfit:9.55, opGoal:10,
+    ytd:{ points:70, gpPct:75.89, totalYoy:29.19, cpRoYoy:17.78, cpYoy:43.06, align:12.88, valv:30.73, tires:15.28, policy:1.53, opProfit:7.97 }},
+  { name:'Bob Rohrman Hyundai',  css:'lafhyundai', points:100, gpPct:77.57, totalYoy:30.49, cpRoYoy:13.19, cpYoy:6.24, align:12.17, valv:24.33, tires:15.79, policy:0.04, opProfit:15.30, opGoal:10,
+    ytd:{ points:90, gpPct:77.08, totalYoy:30.21, cpRoYoy:8.04, cpYoy:13.94, align:13.08, valv:20.87, tires:11.96, policy:0.15, opProfit:12.31 }},
+  { name:'Indy Hyundai',         css:'indyhyundai',points:15,  gpPct:77.35, totalYoy:-11.03, cpRoYoy:5.33, cpYoy:-32.60, align:7.67, valv:14.29, tires:72.34, policy:1.82, opProfit:5.80, opGoal:10,
+    ytd:{ points:30, gpPct:76.12, totalYoy:6.44, cpRoYoy:4.66, cpYoy:-11.02, align:7.70, valv:15.18, tires:37.09, policy:1.87, opProfit:7.55 }},
 ];
 
 const STD = { gpPct:75, totalYoy:5, cpRoYoy:5, cpYoy:5, align:10, valv:23, tires:15, policy:1.6, opProfit:8 };
@@ -1214,6 +1227,24 @@ function pmMetric(mtdVal, ytdVal, goal, fmt, inverse) {
   return `${dot}<span style="color:${color};font-weight:600">${display}</span>${arrow}`;
 }
 
+function pursuitMBox(label, mtdVal, ytdVal, goal, fmt, inverse) {
+  const miss = inverse ? (mtdVal > goal) : (mtdVal < goal);
+  const dot = miss ? '<span class="pm-dot" style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#d93025;margin-right:3px;vertical-align:middle"></span>' : '';
+  const color = miss ? '#d93025' : '#0f9b58';
+  const display = fmt(mtdVal);
+  var arrow = '';
+  if (typeof ytdVal === 'number' && !isNaN(ytdVal)) {
+    var diff = mtdVal - ytdVal;
+    if (inverse) diff = -diff; // for policy, lower MTD is better
+    if (diff > 0.01) arrow = '<span class="pm-arrow" style="color:#0f9b58;font-size:11px;margin-left:2px">▲</span>';
+    else if (diff < -0.01) arrow = '<span class="pm-arrow" style="color:#d93025;font-size:11px;margin-left:2px">▼</span>';
+  }
+  return '<div class="pm-box" style="background:#f1f5f9;border-radius:8px;padding:8px 6px;text-align:center">' +
+    '<div class="pm-box-label" style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#1e293b;font-weight:600;margin-bottom:3px">' + label + '</div>' +
+    '<div class="pm-box-value" style="font-family:\'DM Mono\',monospace;font-size:13px;font-weight:700;white-space:nowrap">' + dot + '<span style="color:' + color + '">' + display + '</span>' + arrow + '</div>' +
+    '</div>';
+}
+
 function renderPursuit() {
   const grid = document.getElementById('pursuit-grid');
   const tbody = document.getElementById('pursuit-tbody');
@@ -1228,27 +1259,9 @@ function renderPursuit() {
     const fmtP = (v) => v.toFixed(1) + '%';
     const fmtP2 = (v) => v.toFixed(2) + '%';
     const y = s.ytd || {};
-    const ytdPts = y.points || null;
+    const ytdPts = typeof y.points === 'number' ? y.points : null;
     const ptsArrow = ytdPts !== null ? (s.points > ytdPts ? ' <span style="color:#0f9b58;font-size:14px">▲</span> <span style="font-size:12px;color:#0f9b58;font-weight:600">vs YTD</span>' : s.points < ytdPts ? ' <span style="color:#d93025;font-size:14px">▼</span> <span style="font-size:12px;color:#d93025;font-weight:600">vs YTD</span>' : '') : '';
     const ytdLabel = ytdPts !== null ? ' · YTD: ' + ytdPts : '';
-
-    function mBox(label, mtdVal, ytdVal, goal, fmt, inverse) {
-      const miss = inverse ? (mtdVal > goal) : (mtdVal < goal);
-      const dot = miss ? '<span class="pm-dot" style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#d93025;margin-right:3px;vertical-align:middle"></span>' : '';
-      const color = miss ? '#d93025' : '#0f9b58';
-      const display = fmt(mtdVal);
-      let arrow = '';
-      if (ytdVal !== null && ytdVal !== undefined) {
-        const better = inverse ? (mtdVal < ytdVal) : (mtdVal > ytdVal);
-        const worse = inverse ? (mtdVal > ytdVal) : (mtdVal < ytdVal);
-        if (better) arrow = '<span class="pm-arrow" style="color:#0f9b58;font-size:10px;margin-left:2px">▲</span>';
-        else if (worse) arrow = '<span class="pm-arrow" style="color:#d93025;font-size:10px;margin-left:2px">▼</span>';
-      }
-      return '<div class="pm-box" style="background:#f1f5f9;border-radius:8px;padding:8px 6px;text-align:center">' +
-        '<div class="pm-box-label" style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#1e293b;font-weight:600;margin-bottom:3px">' + label + '</div>' +
-        '<div class="pm-box-value" style="font-family:\'DM Mono\',monospace;font-size:13px;font-weight:700;white-space:nowrap">' + dot + '<span style="color:' + color + '">' + display + '</span>' + arrow + '</div>' +
-        '</div>';
-    }
 
     grid.innerHTML += `
       <div class="pursuit-card">
@@ -1265,14 +1278,14 @@ function renderPursuit() {
           <div class="pursuit-bar-fill" style="width:${Math.min(s.points/GOAL*100,100)}%;background:${barColor}"></div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px">
-          ${mBox('GP%', s.gpPct, y.gpPct, STD.gpPct, fmtP, false)}
-          ${mBox('Total YoY', s.totalYoy, y.totalYoy, STD.totalYoy, fmtPct, false)}
-          ${mBox('CP YoY', s.cpYoy, y.cpYoy, STD.cpYoy, fmtPct, false)}
-          ${mBox('Alignment', s.align, y.align, STD.align, fmtP, false)}
-          ${mBox('Valvoline', s.valv, y.valv, STD.valv, fmtP, false)}
-          ${mBox('Tires', s.tires, y.tires, STD.tires, fmtP, false)}
-          ${mBox('Policy%', s.policy, y.policy, STD.policy, fmtP2, true)}
-          ${mBox('Op Profit', s.opProfit, y.opProfit, STD.opProfit, fmtP, false)}
+          ${pursuitMBox('GP%', s.gpPct, y.gpPct, STD.gpPct, fmtP, false)}
+          ${pursuitMBox('Total YoY', s.totalYoy, y.totalYoy, STD.totalYoy, fmtPct, false)}
+          ${pursuitMBox('CP YoY', s.cpYoy, y.cpYoy, STD.cpYoy, fmtPct, false)}
+          ${pursuitMBox('Alignment', s.align, y.align, STD.align, fmtP, false)}
+          ${pursuitMBox('Valvoline', s.valv, y.valv, STD.valv, fmtP, false)}
+          ${pursuitMBox('Tires', s.tires, y.tires, STD.tires, fmtP, false)}
+          ${pursuitMBox('Policy%', s.policy, y.policy, STD.policy, fmtP2, true)}
+          ${pursuitMBox('Op Profit ≥' + (s.opGoal||8) + '%', s.opProfit, y.opProfit, s.opGoal || STD.opProfit, fmtP, false)}
         </div>
       </div>`;
 
@@ -1291,7 +1304,7 @@ function renderPursuit() {
       ${rCell(s.valv,     STD.valv,     p)}
       ${rCell(s.tires,    STD.tires,    p)}
       ${rCell(s.policy <= STD.policy ? 999 : -1, 0, v=>p(s.policy))}
-      ${rCell(s.opProfit, STD.opProfit, p)}
+      ${rCell(s.opProfit, s.opGoal || STD.opProfit, p)}
     </tr>`;
   });
 }
