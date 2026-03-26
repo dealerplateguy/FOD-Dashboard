@@ -312,7 +312,12 @@ function parsePursuit(file) {
 
       upLog('Pursuit: extracted ' + lines.length + ' text lines', 'info');
 
+      // Each store appears TWICE in the PDF: first = MTD, second = YTD
+      // Track how many times we've seen each store
+      const storeHits = {};
       let updated = 0;
+      let ytdUpdated = 0;
+
       lines.forEach(line => {
         const lower = line.toLowerCase();
         let storeIdx = -1;
@@ -321,25 +326,22 @@ function parsePursuit(file) {
         }
         if (storeIdx < 0) return;
 
-        // Extract all numbers (percentages and integers)
         const nums = line.match(/-?\d+\.\d+%?|-?\d+%?/g);
-        if (!nums || nums.length < 10) {
-          upLog('Pursuit: ' + pursuitStores[storeIdx].name + ' — only ' + (nums ? nums.length : 0) + ' numbers found, skipping', 'err');
-          return;
-        }
-
+        if (!nums || nums.length < 9) return;
         const allNums = nums.map(n => parseFloat(String(n).replace('%', '')));
 
-        // Find SERVICE POINTS: first clean integer 0-100 after the 9 metric columns
+        if (!storeHits[storeIdx]) storeHits[storeIdx] = 0;
+        storeHits[storeIdx]++;
+
         let pointsVal = null;
         for (let j = 9; j < allNums.length; j++) {
-          if (Number.isInteger(allNums[j]) && allNums[j] >= 0 && allNums[j] <= 100) {
-            pointsVal = allNums[j]; break;
-          }
+          if (Number.isInteger(allNums[j]) && allNums[j] >= 0 && allNums[j] <= 100) { pointsVal = allNums[j]; break; }
         }
 
         const s = pursuitStores[storeIdx];
-        if (allNums.length >= 9) {
+
+        if (storeHits[storeIdx] === 1) {
+          // FIRST match = MTD
           s.gpPct     = allNums[0];
           s.totalYoy  = allNums[1];
           s.cpRoYoy   = allNums[2];
@@ -351,59 +353,29 @@ function parsePursuit(file) {
           s.opProfit  = allNums[8];
           if (pointsVal !== null) s.points = pointsVal;
           updated++;
-          upLog('Pursuit: ✓ ' + s.name + ' → GP=' + s.gpPct + '% YoY=' + s.totalYoy + '% Pts=' + s.points, 'ok');
+          upLog('Pursuit MTD: ✓ ' + s.name + ' → GP=' + s.gpPct + '% Pts=' + s.points, 'ok');
+        } else if (storeHits[storeIdx] === 2) {
+          // SECOND match = YTD
+          if (!s.ytd) s.ytd = {};
+          s.ytd.gpPct    = allNums[0];
+          s.ytd.totalYoy = allNums[1];
+          s.ytd.cpRoYoy  = allNums[2];
+          s.ytd.cpYoy    = allNums[3];
+          s.ytd.align    = allNums[4];
+          s.ytd.valv     = allNums[5];
+          s.ytd.tires    = allNums[6];
+          s.ytd.policy   = allNums[7];
+          s.ytd.opProfit = allNums[8];
+          if (pointsVal !== null) s.ytd.points = pointsVal;
+          ytdUpdated++;
+          upLog('Pursuit YTD: ✓ ' + s.name + ' → GP=' + s.ytd.gpPct + '% Pts=' + (s.ytd.points||'?'), 'ok');
         }
+        // 3rd+ matches ignored
       });
 
+      upLog('Pursuit: ' + updated + ' MTD, ' + ytdUpdated + ' YTD stores parsed', updated > 0 ? 'ok' : 'err');
+
       if (updated > 0) {
-        // Also parse page 2 (YTD) if available
-        if (pdf.numPages >= 1) {
-          try {
-            // YTD data: second appearance of each store in the PDF text
-            // Track which stores we already parsed in MTD
-            const ytdSeen = {};
-            let pastMtdSection = false;
-            let ytdUpdated = 0;
-            lines.forEach(line => {
-              // Look for the YTD header marker (e.g., "YTD 2025" or "YEAR TO DATE")
-              const upper = line.toUpperCase();
-              if (upper.includes('YTD') && (upper.includes('20') || upper.includes('YEAR'))) pastMtdSection = true;
-              if (!pastMtdSection) return;
-              
-              const lower = line.toLowerCase();
-              let storeIdx = -1;
-              for (const [name, idx] of Object.entries(PURSUIT_STORE_MAP)) {
-                if (lower.includes(name)) { storeIdx = idx; break; }
-              }
-              if (storeIdx < 0) return;
-              if (ytdSeen[storeIdx]) return; // already got YTD for this store
-              
-              const nums = line.match(/-?\d+\.\d+%?|-?\d+%?/g);
-              if (!nums || nums.length < 9) return;
-              const allNums = nums.map(n => parseFloat(String(n).replace('%', '')));
-              const s = pursuitStores[storeIdx];
-              if (!s.ytd) s.ytd = {};
-              s.ytd.gpPct    = allNums[0];
-              s.ytd.totalYoy = allNums[1];
-              s.ytd.cpRoYoy  = allNums[2];
-              s.ytd.cpYoy    = allNums[3];
-              s.ytd.align    = allNums[4];
-              s.ytd.valv     = allNums[5];
-              s.ytd.tires    = allNums[6];
-              s.ytd.policy   = allNums[7];
-              s.ytd.opProfit = allNums[8];
-              // Also grab YTD points
-              let ptVal = null;
-              for (let j = 9; j < allNums.length; j++) {
-                if (Number.isInteger(allNums[j]) && allNums[j] >= 0 && allNums[j] <= 100) { ptVal = allNums[j]; break; }
-              }
-              if (ptVal !== null) s.ytd.points = ptVal;
-              ytdSeen[storeIdx] = true;
-              ytdUpdated++;
-            });
-            if (ytdUpdated > 0) upLog('Pursuit: YTD data updated for ' + ytdUpdated + ' stores', 'ok');
-          } catch(e) { upLog('Pursuit: YTD parse note: ' + e.message, 'err'); }
-        }
         renderPursuit();
         buildPursuitEntry();
         upStatus('pursuit', '✓ Updated ' + updated + ' stores', 'ok');
@@ -1815,7 +1787,7 @@ function renderLeaderboard() {
       <td style="text-align:left"><span style="font-weight:600;color:var(--text)">${a.name}</span></td>
       <td style="text-align:center;padding:4px 6px">${storeLogo[a.store]||a.store}</td>
       <td style="text-align:center;font-weight:800;font-size:14px;color:${psColor};background:#1e293b0a;border-radius:4px">${a.powerScore}</td>
-      <td style="text-align:center"><button onclick="toggleCsi('${a.name.replace(/'/g,"\\'")}')" style="border:none;border-radius:4px;padding:3px 8px;font-size:10px;font-weight:700;cursor:pointer;${a.csiPass?'background:#dcfce7;color:#16a34a':'background:#fee2e2;color:#dc2626'}">${a.csiPass?'✓ +10%':'✗'}</button></td>
+      <td style="text-align:center"><button onclick="toggleCsi('${a.name.replace(/'/g,"\.")}')" style="border:none;border-radius:4px;padding:3px 8px;font-size:10px;font-weight:700;cursor:pointer;${a.csiPass?'background:#dcfce7;color:#16a34a':'background:#fee2e2;color:#dc2626'}">${a.csiPass?'✓ +10%':'✗'}</button></td>
       <td style="text-align:center;font-weight:600">${a.ro}</td>
       <td style="text-align:center;font-weight:700;color:${(a.openRo||0)>20?'var(--red)':(a.openRo||0)>10?'var(--text)':'var(--green)'}">${a.openRo||0}</td>
       <td style="text-align:center;font-weight:600">${cpH}</td>
