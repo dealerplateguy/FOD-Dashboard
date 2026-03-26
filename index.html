@@ -1720,17 +1720,25 @@ function renderLeaderboard() {
       if (INVERSE_METRICS.includes(m)) pct = 100 - pct;
       score += pct * weights[m];
     });
-    // CSI Bonus: +10 points if advisor has CSI pass
+    // CSI Bonus: 10% of power score (not flat points)
     const csiList = getCsiAdvisors();
     a.csiPass = csiList.includes(a.name.toUpperCase());
-    if (a.csiPass) score += 10;
-    a.powerScore = Math.round(Math.min(score, 100));
+    if (a.csiPass) score = score * 1.10;
+    a.powerScore = Math.round(score);
   });
   
-  // Sort by Power Score (or filtered mode)
+  // Sort by Power Score, tiebreakers: CSI → Total Hrs (CP+Warr) → Fewest Open ROs → Combined Units
   let sorted;
   if (lbMode === 'power' || lbMode === 'combined') {
-    sorted = [...lbAdvisors].sort((a,b) => b.powerScore - a.powerScore);
+    sorted = [...lbAdvisors].sort((a,b) => {
+      if (b.powerScore !== a.powerScore) return b.powerScore - a.powerScore;
+      if (a.csiPass !== b.csiPass) return a.csiPass ? -1 : 1;
+      const aTotalHrs = (a.cpHrs||0) + (a.warrHrs||0);
+      const bTotalHrs = (b.cpHrs||0) + (b.warrHrs||0);
+      if (bTotalHrs !== aTotalHrs) return bTotalHrs - aTotalHrs;
+      if ((a.openRo||0) !== (b.openRo||0)) return (a.openRo||0) - (b.openRo||0);
+      return b.combined - a.combined;
+    });
   } else {
     sorted = [...lbAdvisors].sort((a,b) => lbSortKey(b) - lbSortKey(a));
   }
@@ -1996,7 +2004,7 @@ window.addEventListener('DOMContentLoaded', initDashboard);
   <div class="panel-header">
     <div>
       <div class="panel-title">Advisor of the Month Leaderboard</div>
-      <div class="panel-sub">CP Hrs 20% · Open ROs 15% · Warr Hrs 15% · ROs 10% · Hrs/RO 10% · Menu 10% · Valv 8% · Align 6% · Tires 6% · CSI +10% Bonus</div>
+      <div class="panel-sub">CP Hrs 20% · Open ROs 15% · Warr Hrs 15% · ROs 10% · Hrs/RO 10% · Menu 10% · Valv 8% · Align 6% · Tires 6% · CSI +10% Bonus · Tiebreaker: CSI → Total Hrs → Fewest Open ROs → Combined Units</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center">
       <div class="period-badge data-date-badge"></div>
