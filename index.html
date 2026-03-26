@@ -965,7 +965,7 @@ window.parseFile = parseFile;
 <div class="tab-panel active" id="tab-pursuit">
   <div class="panel-header">
     <div>
-      <div class="panel-title">Infinite Pursuit Projections</div>
+      <div class="panel-title">Infinite Pursuit — MTD Estimated Projections</div>
       <div class="panel-sub">Store performance vs standards · <span class="data-month-mtd"></span></div>
     </div>
     <div class="period-badge">Goal: 70 pts</div>
@@ -995,19 +995,19 @@ window.parseFile = parseFile;
   <div class="pursuit-grid" id="pursuit-grid"></div>
 
   <div class="summary-card">
-    <div class="summary-card-header">All Stores · Pursuit Summary</div>
+    <div class="summary-card-header">All Stores · MTD Estimated Pursuit Summary</div>
     <div class="table-scroll">
       <table>
         <thead>
           <tr class="group-row">
             <th class="left">Store</th>
-            <th>Points</th>
-            <th>Service GP%</th>
-            <th>Total GP YoY</th>
-            <th>CP RO YoY</th>
-            <th>CP GP YoY</th>
-            <th>Alignment%</th>
-            <th>Valvoline%</th>
+            <th>MTD<br>Points</th>
+            <th>Service<br>GP%</th>
+            <th>Total GP<br>YoY</th>
+            <th>CP RO<br>YoY</th>
+            <th>CP GP<br>YoY</th>
+            <th>Align%</th>
+            <th>Valv%</th>
             <th>Tires%</th>
             <th>Policy%</th>
             <th>Op Profit%</th>
@@ -1260,7 +1260,7 @@ function renderPursuit() {
     const fmtP2 = (v) => v.toFixed(2) + '%';
     const y = s.ytd || {};
     const ytdPts = typeof y.points === 'number' ? y.points : null;
-    const ptsArrow = ytdPts !== null ? (s.points > ytdPts ? ' <span style="color:#0f9b58;font-size:14px">▲</span> <span style="font-size:12px;color:#0f9b58;font-weight:600">vs YTD</span>' : s.points < ytdPts ? ' <span style="color:#d93025;font-size:14px">▼</span> <span style="font-size:12px;color:#d93025;font-weight:600">vs YTD</span>' : '') : '';
+    const ptsArrow = ytdPts !== null ? (s.points > ytdPts ? ' <span style="color:#0f9b58;font-size:14px">▲</span> <span style="font-size:12px;color:#0f9b58;font-weight:600">vs YTD</span>' : s.points < ytdPts ? ' <span style="color:#d93025;font-size:14px">▼</span> <span style="font-size:12px;color:#d93025;font-weight:600">vs YTD</span>' : ' <span style="font-size:12px;color:#4a5568;font-weight:600">— vs YTD</span>') : '';
     const ytdLabel = ytdPts !== null ? ' · YTD: ' + ytdPts : '';
 
     grid.innerHTML += `
@@ -1290,21 +1290,29 @@ function renderPursuit() {
       </div>`;
 
     const p = n => n.toFixed(1) + '%';
-    // Table: red dot on miss only
+    // Table cell with red dot if missing goal + arrow vs YTD
     const rDot = (v, g) => v < g ? '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--red);margin-right:4px;vertical-align:middle"></span>' : '';
-    const rCell = (v, g, fmt) => `<td class="num"><div class="val-wrap">${rDot(v,g)}<span style="color:${v<g?'var(--red)':'var(--text2)'};${v<g?'font-weight:600':''}">${fmt(v)}</span></div></td>`;
+    function ytdArrow(mtd, ytd, inverse) {
+      if (typeof ytd !== 'number' || isNaN(ytd)) return '';
+      var diff = mtd - ytd;
+      if (inverse) diff = -diff;
+      if (diff > 0.01) return '<span style="color:#0f9b58;font-size:9px;margin-left:2px">▲</span>';
+      if (diff < -0.01) return '<span style="color:#d93025;font-size:9px;margin-left:2px">▼</span>';
+      return '';
+    }
+    const rCell = (v, g, fmt, ytdV, inv) => `<td class="num"><div class="val-wrap">${rDot(v,g)}<span style="color:${v<g?'var(--red)':'var(--text2)'};${v<g?'font-weight:600':''}">${fmt(v)}</span>${ytdArrow(v, ytdV, inv||false)}</div></td>`;
     tbody.innerHTML += `<tr>
       <td class="left">${s.name}</td>
-      <td class="num"><strong style="color:${s.points<=30?'var(--red)':s.points>=70?'var(--green)':'var(--text)'}">${s.points}</strong></td>
-      ${rCell(s.gpPct,    STD.gpPct,    p)}
-      ${rCell(s.totalYoy, STD.totalYoy, v=>(s.totalYoy>0?'+':'')+p(s.totalYoy))}
-      ${rCell(s.cpRoYoy,  STD.cpRoYoy,  v=>(s.cpRoYoy>0?'+':'')+p(s.cpRoYoy))}
-      ${rCell(s.cpYoy,    STD.cpYoy,    v=>(s.cpYoy>0?'+':'')+p(s.cpYoy))}
-      ${rCell(s.align,    STD.align,    p)}
-      ${rCell(s.valv,     STD.valv,     p)}
-      ${rCell(s.tires,    STD.tires,    p)}
-      ${rCell(s.policy <= STD.policy ? 999 : -1, 0, v=>p(s.policy))}
-      ${rCell(s.opProfit, s.opGoal || STD.opProfit, p)}
+      <td class="num"><strong style="color:${s.points<=30?'var(--red)':s.points>=70?'var(--green)':'var(--text)'}">${s.points}</strong>${ytdArrow(s.points, y.points, false)}</td>
+      ${rCell(s.gpPct,    STD.gpPct,    p, y.gpPct)}
+      ${rCell(s.totalYoy, STD.totalYoy, v=>(s.totalYoy>0?'+':'')+p(s.totalYoy), y.totalYoy)}
+      ${rCell(s.cpRoYoy,  STD.cpRoYoy,  v=>(s.cpRoYoy>0?'+':'')+p(s.cpRoYoy), y.cpRoYoy)}
+      ${rCell(s.cpYoy,    STD.cpYoy,    v=>(s.cpYoy>0?'+':'')+p(s.cpYoy), y.cpYoy)}
+      ${rCell(s.align,    STD.align,    p, y.align)}
+      ${rCell(s.valv,     STD.valv,     p, y.valv)}
+      ${rCell(s.tires,    STD.tires,    p, y.tires)}
+      ${rCell(s.policy <= STD.policy ? 999 : -1, 0, v=>p(s.policy), y.policy, true)}
+      ${rCell(s.opProfit, s.opGoal || STD.opProfit, p, y.opProfit)}
     </tr>`;
   });
 }
