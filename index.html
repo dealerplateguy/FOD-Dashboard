@@ -618,6 +618,7 @@ window.parseFile = parseFile;
   .pursuit-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 20px; }
   .pursuit-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
   .pursuit-store { font-size:14px; font-weight:700; color:var(--text); }
+  .sa-table { min-width: 1050px; }
   .pursuit-points { font-family:'DM Mono',monospace; font-size:36px; font-weight:700; line-height:1; color:var(--text); }
   .pursuit-label { font-size:10px; color:var(--muted); margin-top:2px; }
   .pursuit-bar-track { height:4px; background:var(--border); border-radius:2px; overflow:hidden; margin:10px 0 8px; }
@@ -779,7 +780,7 @@ window.parseFile = parseFile;
     .pm-goal { font-size: 5.5px !important; }
 
     /* ── GLOBAL TABLE FIT RULES ── */
-    table { table-layout: fixed !important; width: 100% !important; min-width: 0 !important; border-collapse: collapse !important; word-wrap: break-word !important; }
+    table { width: 100% !important; min-width: 0 !important; border-collapse: collapse !important; word-wrap: break-word !important; }
     .table-wrap   { box-shadow: none !important; border-radius: 4px !important; overflow: visible !important; }
     .table-scroll { overflow: visible !important; }
     .summary-card { box-shadow: none !important; margin-bottom: 6px !important; overflow: visible !important; }
@@ -787,20 +788,24 @@ window.parseFile = parseFile;
     /* Page 2: Advisor Scorecard — must fit ONE landscape page */
     #tab-advisors { page-break-before: always; page-break-inside: avoid; }
     #tab-advisors .panel-header { margin-bottom: 2px !important; padding-bottom: 2px !important; }
-    #tab-advisors table { font-size: 6.5px !important; }
-    #tab-advisors thead tr.group-row th { padding: 1px 1px !important; font-size: 5.5px !important; line-height: 1.1 !important; }
+    #tab-advisors table { font-size: 6px !important; table-layout: auto !important; min-width: 0 !important; }
+    #tab-advisors thead tr.group-row th { padding: 1px 1px !important; font-size: 5.5px !important; line-height: 1.1 !important; white-space: nowrap !important; }
     #tab-advisors thead tr.sub-row th   { padding: 1px 1px !important; font-size: 5px !important; }
-    #tab-advisors tbody td { padding: 1px 1px !important; font-size: 6.5px !important; line-height: 1.1 !important; }
-    #tab-advisors tbody tr.store-hdr td { padding: 2px 3px !important; font-size: 6.5px !important; }
-    #tab-advisors tbody tr.store-total td { padding: 1px 1px !important; font-size: 6px !important; }
-    #tab-advisors .adv-name { font-size: 6.5px !important; }
+    #tab-advisors tbody td { padding: 1px 1px !important; font-size: 6px !important; line-height: 1.1 !important; white-space: nowrap !important; }
+    #tab-advisors tbody tr.store-hdr td { padding: 2px 3px !important; font-size: 6px !important; }
+    #tab-advisors tbody tr.store-total td { padding: 1px 1px !important; font-size: 5.5px !important; }
+    #tab-advisors .adv-name { font-size: 6px !important; }
     #tab-advisors .status-dot { width: 3px !important; height: 3px !important; }
     #tab-advisors #advisor-mgr-panel { display: none !important; }
+
+    /* ── SINGLE TAB PRINT MODE ── */
+    body.single-tab-print .tab-panel[data-print-show="false"] { display: none !important; }
+    body.single-tab-print .tab-panel[data-print-show="true"] { display: block !important; page-break-before: auto !important; }
 
     /* Page 3: Leaderboard — landscape, fit to page */
     #tab-leaderboard { page-break-before: always; }
     #tab-leaderboard .cost-center-nav { display: none !important; }
-    #tab-leaderboard table { font-size: 9px !important; }
+    #tab-leaderboard table { font-size: 9px !important; table-layout: auto !important; }
     #tab-leaderboard thead th { padding: 4px 3px !important; font-size: 8px !important; }
     #tab-leaderboard tbody td { padding: 4px 3px !important; }
     #lb-podium { min-height: 110px !important; margin-bottom: 12px !important; }
@@ -867,6 +872,9 @@ window.parseFile = parseFile;
   <div class="header-right-info">
     <div class="period-chip data-period-range"></div>
     <button onclick="window.print()" style="background:#1a56db;color:#fff;border:none;border-radius:5px;padding:5px 14px;font-size:11px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">🖨 Print All</button>
+    <button onclick="printTab('pursuit','gppace')" style="background:#475569;color:#fff;border:none;border-radius:5px;padding:5px 14px;font-size:11px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">🖨 Summary</button>
+    <button onclick="printTab('advisors')" style="background:#475569;color:#fff;border:none;border-radius:5px;padding:5px 14px;font-size:11px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">🖨 Scorecard</button>
+    <button onclick="printTab('leaderboard')" style="background:#475569;color:#fff;border:none;border-radius:5px;padding:5px 14px;font-size:11px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">🖨 Leaderboard</button>
   </div>
 </div>
 
@@ -1041,7 +1049,7 @@ window.parseFile = parseFile;
 
   <div class="table-wrap">
     <div class="table-scroll">
-      <table style="min-width:1050px">
+      <table class="sa-table">
         <thead>
           <tr class="group-row">
             <th class="left" rowspan="2" style="min-width:160px">Advisor</th>
@@ -1595,7 +1603,7 @@ function renderLeaderboard() {
 
   // Update table header
   const labels = { combined:'Advisor Power Rankings', power:'Advisor Power Rankings', align:'Alignment Count', tire:'Tire Count', valv:'Valvoline Count' };
-  const lbHeader = document.getElementById('lb-table-header'); if (lbHeader) lbHeader.textContent = 'Top 15 · ' + labels[lbMode];
+  const lbHeader = document.getElementById('lb-table-header'); if (lbHeader) lbHeader.textContent = 'All Advisors · ' + labels[lbMode];
 
   // Podium — top 3
   const podium = document.getElementById('lb-podium');
@@ -1628,7 +1636,7 @@ function renderLeaderboard() {
   // Full table — top 10 only
   const tbody = document.getElementById('lb-tbody');
   tbody.innerHTML = '';
-  const top15 = sorted.slice(0, 15);
+  const top15 = sorted;
   top15.forEach((a, idx) => {
     const rank = idx + 1;
     const isTop3 = rank <= 3;
@@ -1716,6 +1724,30 @@ function applyPursuit() {
 // ══════════════════════════════════════════════════════
 // INIT — run after full page load so all DOM elements exist
 // ══════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════
+// PRINT INDIVIDUAL TABS
+// ══════════════════════════════════════════════════════
+function printTab() {
+  // Accept one or more tab IDs: printTab('advisors') or printTab('pursuit','gppace')
+  const tabIds = Array.from(arguments);
+  const allPanels = document.querySelectorAll('.tab-panel');
+  
+  // Mark panels to print
+  allPanels.forEach(p => {
+    const id = p.id.replace('tab-', '');
+    if (tabIds.includes(id)) {
+      p.setAttribute('data-print-show', 'true');
+    } else {
+      p.setAttribute('data-print-show', 'false');
+    }
+  });
+  
+  document.body.classList.add('single-tab-print');
+  window.print();
+  document.body.classList.remove('single-tab-print');
+  allPanels.forEach(p => p.removeAttribute('data-print-show'));
+}
+
 function initDashboard() {
   // ── DYNAMIC DATES ──
   // Data is always as of end of previous business day
@@ -1816,6 +1848,7 @@ window.applyEntries = applyEntries;
 window.togglePursuit = togglePursuit;
 window.applyPursuit  = applyPursuit;
 window.toggleAdvisorMgr    = toggleAdvisorMgr;
+window.printTab            = printTab;
 window.advisorMgrSelectAll = advisorMgrSelectAll;
 window.saveAdvisorSelections = saveAdvisorSelections;
 
@@ -1847,7 +1880,7 @@ window.addEventListener('DOMContentLoaded', initDashboard);
 
   <!-- Full rankings table -->
   <div class="summary-card">
-    <div class="summary-card-header" id="lb-table-header">Top 15 · Advisor Power Rankings</div>
+    <div class="summary-card-header" id="lb-table-header">All Advisors · Advisor Power Rankings</div>
     <div class="table-scroll">
       <table style="text-align:center">
         <thead>
