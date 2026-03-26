@@ -5,9 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Fixed Ops Director Dashboard — Rohrman</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js">
+
 // ══════════════════════════════════════════════════════
 // UPLOAD & PARSE
 // ══════════════════════════════════════════════════════
@@ -84,18 +83,14 @@ function parseGP(wb, filename) {
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
   let updated = 0;
 
-  // Each store has 2 rows: S row (with dealer ID in col0) then G row (with GP totals)
-  // We need the G row: col4=LY, col8=Projected
-  for (let i = 0; i < rows.length - 1; i++) {
-    const dealerId = Number(rows[i][0]);
-    if (!ROHRMAN_IDS.includes(dealerId)) continue;
-    
-    // Check if next row is the G row
-    const gRow = rows[i + 1];
-    if (String(gRow[3]).trim().toUpperCase() !== 'G') continue;
-
-    const ly   = Number(gRow[4]) || 0;   // col 4 = Last Year
-    const proj = Number(gRow[8]) || 0;    // col 8 = Projected
+  rows.forEach(row => {
+    const dealerId = Number(row[0]);
+    if (!ROHRMAN_IDS.includes(dealerId)) return;
+    // Row structure: col0=dealer id, col6=projected total labor, col8=projected total YoY%
+    // G row (index 26 = 'G' days) — col4=LY total, col6=projected, col8=YoY pct
+    const proj  = Number(row[6])  || 0;
+    const ly    = Number(row[4])  || 0;
+    const yoy   = Number(row[8])  || 0;
 
     const store = gpStores.find(s => {
       const idMap = { honda:1712, toyota:1713, kia:1714, lafhyundai:1715, indyhyundai:1718 };
@@ -104,20 +99,19 @@ function parseGP(wb, filename) {
     if (store && proj > 0) {
       store.total    = proj;
       store.lyTotal  = ly;
-      store.totalYoy = (ly && ly !== 0) ? ((proj - ly) / ly * 100) : 0;
+      store.totalYoy = yoy * 100;
       updated++;
-      upLog('GP: ' + store.name + ' → Proj $' + Math.round(proj).toLocaleString() + ' LY $' + Math.round(ly).toLocaleString() + ' YoY ' + store.totalYoy.toFixed(1) + '%', 'ok');
     }
-  }
+  });
 
   if (updated > 0) {
     renderGPCards();
     gpRenderTable();
-    upStatus('gp', '✓ Updated ' + updated + ' stores', 'ok');
-    upLog('GP Totals: updated ' + updated + ' stores from ' + filename, 'ok');
+    upStatus('gp', `✓ Updated ${updated} stores`, 'ok');
+    upLog(`GP Totals: updated ${updated} stores from ${filename}`, 'ok');
   } else {
     upStatus('gp', '⚠ No matching stores found', 'err');
-    upLog('GP Totals: no Rohrman stores found in ' + filename, 'err');
+    upLog(`GP Totals: no Rohrman stores found in ${filename}`, 'err');
   }
 }
 
@@ -144,11 +138,9 @@ function parseSA(wb, filename) {
     tireCnt:   col('CP TIRE CNT'),
     valvPct:   col('VALVOLINE PEN'),
     valvCnt:   col('VALVOLINE TOTAL FLUSH'),
-    cpHrs:     col('CUSTOMER SOLD HOURS'),
-    warrHrs:   col('WARRANTY SOLD HOURS'),
   };
 
-  upLog(`SA columns mapped: RO=${C.ro} DISC=${C.disc} RAP=${C.rap} ELR=${C.elr} cpHrs=${C.cpHrs} warrHrs=${C.warrHrs}`, 'info');
+  upLog(`SA columns mapped: RO=${C.ro} DISC=${C.disc} RAP=${C.rap} ELR=${C.elr}`, 'info');
 
   const newData = [];
   rows.slice(1).forEach(row => {
@@ -167,8 +159,6 @@ function parseSA(wb, filename) {
       disc:     Math.round(Number(row[C.disc])     || 0),
       rap:      Number(row[C.rap])     || 0,
       elr:      Math.round(Number(row[C.elr])      || 0),
-      cpHrs:    C.cpHrs >= 0 ? Math.round((Number(row[C.cpHrs]) || 0) * 10) / 10 : null,
-      warrHrs:  C.warrHrs >= 0 ? Math.round((Number(row[C.warrHrs]) || 0) * 10) / 10 : null,
       alignPct: (Number(row[C.alignPct]) || 0) * 100,
       alignCnt: Math.round(Number(row[C.alignCnt]) || 0),
       tirePct:  (Number(row[C.tirePct])  || 0) * 100,
@@ -193,6 +183,7 @@ function parseSA(wb, filename) {
     filtered.forEach(a => saAdvisors.push(a));
     saRenderTable();
     renderLeaderboard();
+  buildCSIGrid();
     upStatus('sa', `✓ Loaded ${filtered.length} advisors`, 'ok');
     upLog(`SA Totals: loaded ${filtered.length} advisors from ${filename}`, 'ok');
   } else {
@@ -229,39 +220,38 @@ function parseEmail(wb, filename) {
 function parseWIP(wb, filename) {
   const ws = wb.Sheets[wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-  const ROHRMAN = {1712:'honda',1713:'toyota',1714:'kia',1715:'lafhyundai',1718:'indyhyundai'};
+  const ROHRMAN = {1712:'honda',1713:'toyota',1714:'kia',1715:'hyundai',1718:'indy'};
   let updated = 0;
 
-  // Structure per store:
-  //   Row i:   dealer ID in col0, "CURRENT" in col2 (0-7 days)
-  //   Row i+1: store name in col0 (8-30 days)
-  //   Row i+2: (31-60 days)
-  //   Row i+3: ">" in col2 (>60 days)
-  //   Row i+4: TOTAL row — col5 = total open RO count
-  for (let i = 0; i < rows.length - 4; i++) {
-    const dealerId = Number(rows[i][0]);
-    if (!ROHRMAN[dealerId]) continue;
+  let currentDealer = null;
+  const buckets = [];
 
-    const totalRow = rows[i + 4];
-    const openRo = Number(totalRow[5]) || 0;
-    
-    // Over 30 days = 31-60 bucket + >60 bucket
-    const bucket31_60 = Number(rows[i + 2][5]) || 0;
-    const bucketOver60 = Number(rows[i + 3][5]) || 0;
-    const over30 = bucket31_60 + bucketOver60;
-
-    const store = gpStores.find(s => s.id === ROHRMAN[dealerId]);
-    if (store) {
-      store.openRo = openRo;
-      store.over30 = over30;
-      updated++;
-      upLog('WIP: ' + store.name + ' → ' + openRo + ' open ROs (' + over30 + ' over 30d)', 'ok');
+  rows.forEach(row => {
+    const v0 = Number(row[0]);
+    if (ROHRMAN[v0]) {
+      if (currentDealer && buckets.length >= 3) {
+        const total = buckets.reduce((s,b) => s + (Number(b[5])||0), 0);
+        const over30 = (Number(buckets[2]?.[5])||0) + (Number(buckets[3]?.[5])||0);
+        const store = gpStores.find(s => s.id === ROHRMAN[currentDealer]);
+        if (store) { store.openRo = total; store.over30 = over30; updated++; }
+      }
+      currentDealer = v0;
+      buckets.length = 0;
+    } else if (currentDealer && (String(row[2]).includes('CURRENT') || String(row[1]).includes('-'))) {
+      buckets.push(row);
     }
+  });
+  // Last dealer
+  if (currentDealer && buckets.length >= 3) {
+    const total = buckets.reduce((s,b) => s + (Number(b[5])||0), 0);
+    const over30 = (Number(buckets[2]?.[5])||0) + (Number(buckets[3]?.[5])||0);
+    const store = gpStores.find(s => s.id === ROHRMAN[currentDealer]);
+    if (store) { store.openRo = total; store.over30 = over30; updated++; }
   }
 
   renderGPCards(); gpRenderTable();
-  upStatus('wip', updated > 0 ? '✓ Updated ' + updated + ' stores' : '⚠ No stores found', updated > 0 ? 'ok' : 'err');
-  upLog('WIP: updated ' + updated + ' stores from ' + filename, updated > 0 ? 'ok' : 'err');
+  upStatus('wip', `✓ Updated ${updated} stores`, updated > 0 ? 'ok' : 'err');
+  upLog(`WIP: updated ${updated} stores from ${filename}`, updated > 0 ? 'ok' : 'err');
 }
 
 // ── PARSE PURSUIT PDF ──
@@ -275,44 +265,22 @@ const PURSUIT_STORE_MAP = {
 };
 
 function parsePursuit(file) {
-  if (typeof pdfjsLib === 'undefined') {
-    upLog('pdf.js not loaded — cannot parse PDF', 'err');
-    upStatus('pursuit', '✗ pdf.js not loaded', 'err');
-    return;
-  }
-  pdfjsLib.GlobalWorkerOptions.workerSrc = '';
-
+  // Read as text using FileReader — PDFs from this report have extractable text
   const reader = new FileReader();
-  reader.onload = async function(e) {
+  reader.onload = function(e) {
     try {
-      const typedArray = new Uint8Array(e.target.result);
-      const pdf = await pdfjsLib.getDocument({ data: typedArray, disableWorker: true }).promise;
-      upLog('Pursuit PDF loaded — ' + pdf.numPages + ' page(s)', 'ok');
+      const bytes = new Uint8Array(e.target.result);
+      // Extract text using a simple byte scan for readable ASCII lines
+      let text = '';
+      for (let i = 0; i < bytes.length; i++) {
+        const c = bytes[i];
+        if (c >= 32 && c < 127) text += String.fromCharCode(c);
+        else if (c === 10 || c === 13) text += '\n';
+      }
 
-      // Extract text from page 1 (monthly data)
-      const page = await pdf.getPage(1);
-      const textContent = await page.getTextContent();
-
-      // Group text items into rows by Y position
-      const yBuckets = {};
-      textContent.items.forEach(item => {
-        const y = Math.round(item.transform[5]); // Y position
-        if (!yBuckets[y]) yBuckets[y] = [];
-        yBuckets[y].push({ x: item.transform[4], text: item.str.trim() });
-      });
-
-      // Sort each row by X, join into single line strings
-      const lines = Object.keys(yBuckets)
-        .sort((a, b) => Number(b) - Number(a)) // top to bottom
-        .map(y => {
-          const items = yBuckets[y].sort((a, b) => a.x - b.x);
-          return items.map(i => i.text).join(' ');
-        })
-        .filter(l => l.length > 10);
-
-      upLog('Pursuit: extracted ' + lines.length + ' text lines', 'info');
-
+      const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 10);
       let updated = 0;
+
       lines.forEach(line => {
         const lower = line.toLowerCase();
         let storeIdx = -1;
@@ -321,28 +289,28 @@ function parsePursuit(file) {
         }
         if (storeIdx < 0) return;
 
-        // Extract all numbers (percentages and integers)
+        // Extract all numbers from the line
         const nums = line.match(/-?\d+\.\d+%?|-?\d+%?/g);
-        if (!nums || nums.length < 10) {
-          upLog('Pursuit: ' + pursuitStores[storeIdx].name + ' — only ' + (nums ? nums.length : 0) + ' numbers found, skipping', 'err');
-          return;
-        }
+        if (!nums || nums.length < 10) return;
 
-        const allNums = nums.map(n => parseFloat(String(n).replace('%', '')));
+        const pct = v => parseFloat(String(v).replace('%',''));
+        const s = pursuitStores[storeIdx];
+        // Try to find the SERVICE POINTS value (integer, 0-100)
+        // It appears after the 9 metric columns
+        const allNums = nums.map(n => parseFloat(String(n).replace('%','')));
 
-        // Find SERVICE POINTS: first clean integer 0-100 after the 9 metric columns
+        // Find points: look for a clean integer between 0-100 after at least 9 numbers
         let pointsVal = null;
-        for (let j = 9; j < allNums.length; j++) {
+        for (let j = 8; j < allNums.length; j++) {
           if (Number.isInteger(allNums[j]) && allNums[j] >= 0 && allNums[j] <= 100) {
             pointsVal = allNums[j]; break;
           }
         }
 
-        const s = pursuitStores[storeIdx];
         if (allNums.length >= 9) {
           s.gpPct     = allNums[0];
           s.totalYoy  = allNums[1];
-          s.cpRoYoy   = allNums[2];
+          // skip cpRoYoy (col 2)
           s.cpYoy     = allNums[3];
           s.align     = allNums[4];
           s.valv      = allNums[5];
@@ -351,18 +319,19 @@ function parsePursuit(file) {
           s.opProfit  = allNums[8];
           if (pointsVal !== null) s.points = pointsVal;
           updated++;
-          upLog('Pursuit: ✓ ' + s.name + ' → GP=' + s.gpPct + '% YoY=' + s.totalYoy + '% Pts=' + s.points, 'ok');
         }
       });
 
       if (updated > 0) {
         renderPursuit();
         buildPursuitEntry();
-        upStatus('pursuit', '✓ Updated ' + updated + ' stores', 'ok');
-        upLog('Pursuit: updated ' + updated + ' stores from ' + file.name, 'ok');
+        upStatus('pursuit', `✓ Updated ${updated} stores`, 'ok');
+        upLog(`Pursuit: updated ${updated} stores from ${file.name}`, 'ok');
       } else {
+        // Fallback: show manual entry panel with instructions
         upStatus('pursuit', '⚠ Auto-parse limited — use manual entry panel on Infinite Pursuit tab', 'err');
-        upLog('Pursuit: no matching store rows found — use manual entry panel', 'err');
+        upLog(`Pursuit: PDF text extraction limited for ${file.name} — use the manual entry panel`, 'err');
+        // Switch to pursuit tab and open entry panel
         document.querySelectorAll('.tab-btn').forEach(b => { if (b.textContent.includes('Infinite')) b.click(); });
         const p = document.getElementById('pursuit-entry-panel');
         if (p) { p.style.display = 'block'; document.getElementById('pursuit-toggle-icon').textContent = 'COLLAPSE ▲'; }
@@ -427,76 +396,6 @@ function parseTech(wb, filename) {
   upLog(`Tech: updated ${updated} advisors from ${filename}`, 'ok');
 }
 
-// ── PARSE WIP DETAIL (per-advisor open ROs) ──
-function parseWIPDetail(fileList) {
-  if (!fileList || fileList.length === 0) return;
-  if (typeof XLSX === 'undefined') { upLog('SheetJS not loaded', 'err'); return; }
-  
-  const openRoCounts = {}; // advisor name → count of unique ROs
-  let filesProcessed = 0;
-  
-  Array.from(fileList).forEach(file => {
-    const reader = new FileReader();
-    reader.onload = function(e) {
-      try {
-        const wb = XLSX.read(e.target.result, { type: 'array' });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-        
-        // Col 15 = advisor name, Col 5 = RO number
-        // Skip header row, count unique ROs per advisor
-        const advisorROs = {};
-        rows.slice(1).forEach(row => {
-          const advisor = String(row[15] || '').trim().toUpperCase();
-          const roNum = row[5];
-          if (!advisor || advisor === 'ADVISOR' || !roNum) return;
-          if (!advisorROs[advisor]) advisorROs[advisor] = new Set();
-          advisorROs[advisor].add(roNum);
-        });
-        
-        Object.entries(advisorROs).forEach(([name, roSet]) => {
-          openRoCounts[name] = (openRoCounts[name] || 0) + roSet.size;
-        });
-        
-        upLog('WIP Detail: parsed ' + file.name + ' — ' + Object.keys(advisorROs).length + ' advisors', 'ok');
-      } catch(err) {
-        upLog('WIP Detail error (' + file.name + '): ' + err.message, 'err');
-      }
-      
-      filesProcessed++;
-      if (filesProcessed === fileList.length) {
-        // All files processed — update saAdvisors
-        let updated = 0;
-        saAdvisors.forEach(a => {
-          const key = a.name.toUpperCase();
-          if (openRoCounts[key] !== undefined) {
-            a.openRo = openRoCounts[key];
-            updated++;
-          }
-        });
-        saRenderTable();
-        renderLeaderboard();
-        const statusEl = document.getElementById('up-wipdetail-status');
-        if (statusEl) { statusEl.textContent = '✓ Updated ' + updated + ' advisors'; statusEl.style.color = '#0f9b58'; }
-        upLog('WIP Detail: updated open ROs for ' + updated + ' advisors from ' + fileList.length + ' files', 'ok');
-        // Also update store-level open ROs on GP cards
-        renderGPCards();
-      }
-    };
-    reader.readAsArrayBuffer(file);
-  });
-}
-
-// Expose parse functions globally so the second script block can call them
-window.parseGP = parseGP;
-window.parseSA = parseSA;
-window.parseEmail = parseEmail;
-window.parseWIP = parseWIP;
-window.parseTech = parseTech;
-window.parseWIPDetail = parseWIPDetail;
-window.parsePursuit = parsePursuit;
-window.parseFile = parseFile;
-
 </script>
 <style>
   /* ── SHARED VARIABLES ── */
@@ -507,8 +406,8 @@ window.parseFile = parseFile;
     --border:    #e2e6ed;
     --border2:   #d0d5de;
     --text:      #0f1623;
-    --text2:     #3d4a5c;
-    --muted:     #8a96a8;
+    --text2:     #111827;
+    --muted:     #555555;
     --green:     #0f9b58;
     --green-bg:  #edfaf3;
     --red:       #d93025;
@@ -608,7 +507,7 @@ window.parseFile = parseFile;
     gap: 10px;
   }
   .panel-title { font-size: 18px; font-weight: 700; letter-spacing: -0.4px; }
-  .panel-sub { font-size: 11px; color: var(--muted); font-family: 'DM Mono', monospace; text-transform: uppercase; letter-spacing: 0.8px; margin-top: 3px; }
+  .panel-sub { font-size: 11px; color: #555; font-family: 'DM Mono', monospace; text-transform: uppercase; letter-spacing: 0.8px; margin-top: 3px; }
 
   /* ── SHARED CARD ── */
   .summary-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
@@ -617,16 +516,14 @@ window.parseFile = parseFile;
   /* ── PURSUIT CARDS ── */
   .pursuit-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 20px; }
   .pursuit-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-  .pursuit-store { font-size:14px; font-weight:700; color:var(--text); }
-  .sa-table { min-width: 1050px; }
+  .pursuit-store { font-size:14px; font-weight:700; color:var(--text); margin-bottom:10px; }
   .pursuit-points { font-family:'DM Mono',monospace; font-size:36px; font-weight:700; line-height:1; color:var(--text); }
-  .pursuit-label { font-size:10px; color:var(--muted); margin-top:2px; }
+  .pursuit-label { font-size:10px; color:#555; margin-top:2px; }
   .pursuit-bar-track { height:4px; background:var(--border); border-radius:2px; overflow:hidden; margin:10px 0 8px; }
   .pursuit-bar-fill { height:100%; border-radius:2px; }
-  .pursuit-metrics { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; border-top:1px solid var(--border); padding-top:10px; margin-top:4px; }
+  .pursuit-metrics { display:grid; grid-template-columns:1fr 1fr; gap:6px; border-top:1px solid var(--border); padding-top:10px; margin-top:4px; }
   .pm-item { text-align:center; }
-  .pm-label { font-size:9px; text-transform:uppercase; letter-spacing:0.5px; color:var(--muted); margin-bottom:2px; }
-  .pm-goal  { font-size:7px; color:var(--muted); opacity:0.7; display:block; font-weight:400; letter-spacing:0; text-transform:none; }
+  .pm-label { font-size:9px; text-transform:uppercase; letter-spacing:0.5px; color:#555; margin-bottom:2px; }
   .pm-val { font-family:'DM Mono',monospace; font-size:12px; font-weight:600; color:var(--text); }
   .pm-val.good { color:var(--green); }
   .pm-val.bad  { color:var(--red); }
@@ -635,25 +532,25 @@ window.parseFile = parseFile;
   .stores-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(290px,1fr)); gap:12px; margin-bottom:20px; }
   .store-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:16px; position:relative; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.05); }
   .store-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; }
-  .store-card.honda::before      { background:#003366; }
-  .store-card.toyota::before     { background:#cc0000; }
-  .store-card.kia::before        { background:#111111; }
-  .store-card.lafhyundai::before { background:#002c5f; }
-  .store-card.indyhyundai::before{ background:#002c5f; }
-  .card-store-name { font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:0.8px; margin-bottom:10px; display:flex; align-items:center; gap:6px; }
+  .store-card.honda::before      { background:#cc2222; }
+  .store-card.toyota::before     { background:#c8820a; }
+  .store-card.kia::before        { background:#2563eb; }
+  .store-card.lafhyundai::before { background:#0891b2; }
+  .store-card.indyhyundai::before{ background:#7c3aed; }
+  .card-store-name { font-size:11px; font-weight:600; color:#555; text-transform:uppercase; letter-spacing:0.8px; margin-bottom:10px; display:flex; align-items:center; gap:6px; }
   .store-dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; display:inline-block; }
-  .dot-honda       { background:#003366; }
-  .dot-toyota      { background:#cc0000; }
-  .dot-kia         { background:#111111; }
-  .dot-lafhyundai  { background:#002c5f; }
-  .dot-indyhyundai { background:#002c5f; }
+  .dot-honda       { background:#cc2222; }
+  .dot-toyota      { background:#c8820a; }
+  .dot-kia         { background:#2563eb; }
+  .dot-lafhyundai  { background:#0891b2; }
+  .dot-indyhyundai { background:#7c3aed; }
   .gp-total-row { display:flex; align-items:flex-end; justify-content:space-between; margin-bottom:10px; }
   .gp-amount { font-family:'DM Mono',monospace; font-size:28px; font-weight:500; color:var(--text); line-height:1; letter-spacing:-1px; }
-  .gp-ly { font-family:'DM Mono',monospace; font-size:10px; color:var(--muted); text-align:right; line-height:1.7; }
+  .gp-ly { font-family:'DM Mono',monospace; font-size:10px; color:#555; text-align:right; line-height:1.7; }
   .yoy-badge { display:inline-flex; align-items:center; gap:4px; font-family:'DM Mono',monospace; font-size:12px; font-weight:600; padding:3px 8px; border-radius:5px; margin-bottom:12px; }
   .yoy-badge.up   { background:var(--green-bg); color:var(--green); }
   .yoy-badge.down { background:var(--red-bg);   color:var(--red); }
-  .yoy-badge.flat { background:var(--surface2); color:var(--muted); }
+  .yoy-badge.flat { background:var(--surface2); color:#555; }
   .pace-bar-track { height:4px; background:var(--border); border-radius:2px; overflow:hidden; margin-bottom:14px; }
   .pace-bar-fill  { height:100%; border-radius:2px; transition:width 0.5s ease; }
   .pace-bar-fill.up   { background:var(--green); }
@@ -661,12 +558,12 @@ window.parseFile = parseFile;
   .pace-bar-fill.flat { background:var(--muted); }
   .cc-breakdown { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; padding-top:12px; border-top:1px solid var(--border); }
   .cc-item { text-align:center; }
-  .cc-label { font-size:9px; text-transform:uppercase; letter-spacing:0.8px; color:var(--muted); margin-bottom:2px; font-weight:500; }
+  .cc-label { font-size:9px; text-transform:uppercase; letter-spacing:0.8px; color:#555; margin-bottom:2px; font-weight:500; }
   .cc-value { font-family:'DM Mono',monospace; font-size:12px; font-weight:500; color:var(--text); }
   .cc-yoy { font-family:'DM Mono',monospace; font-size:10px; margin-top:1px; font-weight:500; }
   .cc-yoy.up   { color:var(--green); }
   .cc-yoy.down { color:var(--red); }
-  .cc-yoy.flat { color:var(--muted); }
+  .cc-yoy.flat { color:#555; }
   .cost-center-nav { display:flex; gap:4px; margin-bottom:18px; flex-wrap:wrap; }
   .cc-btn { background:var(--surface); border:1px solid var(--border2); border-radius:6px; padding:6px 16px; font-size:12px; font-weight:500; color:var(--text2); cursor:pointer; font-family:'Inter',sans-serif; transition:all 0.12s; }
   .cc-btn:hover { background:var(--surface2); border-color:var(--accent); color:var(--accent); }
@@ -677,7 +574,17 @@ window.parseFile = parseFile;
 
   /* ── SA SCORECARD STYLES ── */
   .filters { display:flex; gap:5px; margin-bottom:16px; flex-wrap:wrap; align-items:center; }
-  .filter-label { font-size:11px; color:var(--muted); font-weight:600; margin-right:2px; text-transform:uppercase; letter-spacing:0.5px; }
+  .filter-label { font-size:11px; color:#555; font-weight:600; margin-right:2px; text-transform:uppercase; letter-spacing:0.5px; }
+  /* CSI */
+  .csi-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:8px; margin-bottom:16px; }
+  .csi-item { display:flex; align-items:center; gap:10px; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:10px 12px; cursor:pointer; transition:all 0.12s; }
+  .csi-item:hover { border-color:var(--accent); }
+  .csi-item.csi-on { border-color:var(--green); background:var(--green-bg); }
+  .csi-check { width:18px; height:18px; border-radius:4px; border:2px solid var(--border2); display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:12px; }
+  .csi-on .csi-check { background:var(--green); border-color:var(--green); color:#fff; }
+  .csi-name { font-size:12px; font-weight:600; color:var(--text); }
+  .csi-store { font-size:10px; color:#555; margin-top:1px; }
+  .csi-badge { display:inline-block; font-size:9px; font-weight:700; background:#edfaf3; color:#0f9b58; border:1px solid #0f9b58; border-radius:3px; padding:1px 5px; margin-left:6px; vertical-align:middle; letter-spacing:0.5px; }
   .filter-btn { background:var(--surface); border:1px solid var(--border2); border-radius:6px; padding:5px 14px; font-size:12px; font-weight:500; color:var(--text2); cursor:pointer; transition:all 0.12s; }
   .filter-btn:hover { border-color:var(--accent); color:var(--accent); }
   .filter-btn.active { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
@@ -687,7 +594,7 @@ window.parseFile = parseFile;
   thead tr.group-row th { background:#1e293b; color:#cbd5e1; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:1px; padding:10px 12px; font-family:'DM Mono',monospace; border-right:1px solid #334155; text-align:center; white-space:nowrap; vertical-align:middle; }
   thead tr.group-row th.left { text-align:left; }
   thead tr.group-row th.group-divider { border-left:2px solid #475569; }
-  thead tr.sub-row th { background:#f1f5f9; color:var(--muted); font-size:9.5px; font-weight:600; text-transform:uppercase; letter-spacing:0.6px; padding:6px 12px; font-family:'DM Mono',monospace; border-bottom:2px solid var(--border2); border-right:1px solid var(--border); text-align:center; white-space:nowrap; }
+  thead tr.sub-row th { background:#f1f5f9; color:#555; font-size:9.5px; font-weight:600; text-transform:uppercase; letter-spacing:0.6px; padding:6px 12px; font-family:'DM Mono',monospace; border-bottom:2px solid var(--border2); border-right:1px solid var(--border); text-align:center; white-space:nowrap; }
   thead tr.sub-row th.left { text-align:left; }
   tbody tr { border-bottom:1px solid var(--border); }
   tbody tr:last-child { border-bottom:none; }
@@ -710,7 +617,7 @@ window.parseFile = parseFile;
   .ro-cell { display:flex; flex-direction:column; align-items:flex-end; gap:3px; }
   .ro-bar-track { width:52px; height:3px; background:var(--border2); border-radius:2px; overflow:hidden; }
   .ro-bar-fill  { height:100%; border-radius:2px; }
-  .legend { display:flex; gap:14px; align-items:center; font-size:11px; color:var(--muted); }
+  .legend { display:flex; gap:14px; align-items:center; font-size:11px; color:#555; }
   .legend-item { display:flex; align-items:center; gap:5px; }
   .l-dot { width:8px; height:8px; border-radius:50%; }
 
@@ -719,96 +626,59 @@ window.parseFile = parseFile;
   .chip { display:inline-block; padding:2px 7px; border-radius:4px; font-size:11px; font-family:'DM Mono',monospace; font-weight:600; }
   .chip.up   { background:var(--green-bg); color:var(--green); }
   .chip.down { background:var(--red-bg);   color:var(--red); }
-  .chip.flat { background:var(--surface2); color:var(--muted); }
+  .chip.flat { background:var(--surface2); color:#555; }
   .total-row td { font-weight:700; background:#f0f4ff; border-top:2px solid #c3d3f7; }
 
   /* ── PRINT ── */
-  @page { 
-    size: landscape; 
-    margin: 0.25in;
-  }
-
   @media print {
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-    body { background: #fff !important; font-size: 10px; padding: 0; margin: 0; }
+    body { background: #fff !important; font-size: 10px; padding: 0; }
 
-    .global-header { position: static; background: #1e293b !important; padding: 6px 16px; box-shadow: none; margin-bottom: 8px; }
+    .global-header { position: static; background: #1e293b !important; padding: 8px 16px; box-shadow: none; margin-bottom: 12px; }
     .tab-nav { display: none !important; }
     .header-right-info { display: none !important; }
 
-    /* Show only the 4 tabs we want, stacked */
-    .tab-panel { display: block !important; padding: 0 10px 10px; overflow: visible !important; }
-    #tab-upload { display: none !important; }
+    /* Show ALL panels stacked */
+    .tab-panel { display: block !important; padding: 0 14px 20px; }
 
-    /* Page 1: Pursuit boxes + GP Pace boxes together */
-    #tab-pursuit { padding-bottom: 4px !important; }
-    #tab-gppace  { padding-top: 0 !important; }
+    /* Section breaks between panels */
+    #tab-gppace  { border-top: 2px solid #e2e6ed; padding-top: 16px; }
+    #tab-advisors { border-top: 2px solid #e2e6ed; padding-top: 16px; page-break-before: always; }
+    #tab-leaderboard { border-top: 2px solid #e2e6ed; padding-top: 16px; page-break-before: always; }
 
     /* Panel headers smaller */
-    .panel-title { font-size: 13px !important; }
-    .panel-sub   { font-size: 8px !important; }
-    .panel-header { margin-bottom: 6px; padding-bottom: 4px; }
+    .panel-title { font-size: 14px !important; }
+    .panel-sub   { font-size: 9px !important; }
+    .panel-header { margin-bottom: 10px; padding-bottom: 8px; }
 
     /* Hide interactive controls */
     .cost-center-nav { display: none !important; }
     .filters         { display: none !important; }
     #entry-panel     { display: none !important; }
-    #advisor-mgr-panel { display: none !important; }
-    #pursuit-entry-panel { display: none !important; }
-    .summary-card-header[onclick] { display: none !important; }
+    .summary-card-header[onclick] { cursor: default; }
     #entry-toggle-icon { display: none !important; }
     .apply-btn { display: none !important; }
-    .period-badge { display: none !important; }
-    .legend { display: none !important; }
 
-    /* Hide the pursuit detail table — just show cards */
-    #tab-pursuit .summary-card { display: none !important; }
-    #tab-pursuit .pursuit-grid { display: grid !important; }
-
-    /* Hide the GP summary table — just show cards */
-    #tab-gppace .summary-card { display: none !important; }
-    #tab-gppace .stores-grid  { display: grid !important; }
-
-    /* Compact cards — 5 across */
+    /* Compact cards */
     .stores-grid  { grid-template-columns: repeat(5, 1fr) !important; gap: 6px !important; margin-bottom: 10px !important; }
     .pursuit-grid { grid-template-columns: repeat(5, 1fr) !important; gap: 6px !important; margin-bottom: 10px !important; }
-    .store-card, .pursuit-card { padding: 8px !important; }
-    .gp-amount    { font-size: 16px !important; }
-    .pursuit-points { font-size: 24px !important; }
-    .pm-label { font-size: 6.5px !important; }
-    .pm-val { font-size: 9px !important; }
-    .pm-goal { font-size: 5.5px !important; }
+    .store-card, .pursuit-card { padding: 10px !important; }
+    .gp-amount    { font-size: 18px !important; }
+    .pursuit-points { font-size: 26px !important; }
 
-    /* ── GLOBAL TABLE FIT RULES ── */
-    table { width: 100% !important; min-width: 0 !important; border-collapse: collapse !important; word-wrap: break-word !important; }
+    /* Tables compact */
+    table { font-size: 9px !important; min-width: 0 !important; width: 100% !important; }
+    thead tr.group-row th { padding: 5px 6px !important; font-size: 8px !important; }
+    thead tr.sub-row th   { padding: 3px 6px !important; font-size: 7.5px !important; }
+    tbody td { padding: 5px 6px !important; }
+    tbody tr.store-hdr td { padding: 4px 8px !important; }
+
+    /* Table wrap no overflow clipping */
     .table-wrap   { box-shadow: none !important; border-radius: 4px !important; overflow: visible !important; }
     .table-scroll { overflow: visible !important; }
-    .summary-card { box-shadow: none !important; margin-bottom: 6px !important; overflow: visible !important; }
 
-    /* Page 2: Advisor Scorecard — must fit ONE landscape page */
-    #tab-advisors { page-break-before: always; page-break-inside: avoid; }
-    #tab-advisors .panel-header { margin-bottom: 2px !important; padding-bottom: 2px !important; }
-    #tab-advisors table { font-size: 6px !important; table-layout: auto !important; min-width: 0 !important; }
-    #tab-advisors thead tr.group-row th { padding: 1px 1px !important; font-size: 5.5px !important; line-height: 1.1 !important; white-space: nowrap !important; }
-    #tab-advisors thead tr.sub-row th   { padding: 1px 1px !important; font-size: 5px !important; }
-    #tab-advisors tbody td { padding: 1px 1px !important; font-size: 6px !important; line-height: 1.1 !important; white-space: nowrap !important; }
-    #tab-advisors tbody tr.store-hdr td { padding: 2px 3px !important; font-size: 6px !important; }
-    #tab-advisors tbody tr.store-total td { padding: 1px 1px !important; font-size: 5.5px !important; }
-    #tab-advisors .adv-name { font-size: 6px !important; }
-    #tab-advisors .status-dot { width: 3px !important; height: 3px !important; }
-    #tab-advisors #advisor-mgr-panel { display: none !important; }
-
-    /* ── SINGLE TAB PRINT MODE ── */
-    body.single-tab-print .tab-panel[data-print-show="false"] { display: none !important; }
-    body.single-tab-print .tab-panel[data-print-show="true"] { display: block !important; page-break-before: auto !important; }
-
-    /* Page 3: Leaderboard — landscape, fit to page */
-    #tab-leaderboard { page-break-before: always; }
-    #tab-leaderboard .cost-center-nav { display: none !important; }
-    #tab-leaderboard table { font-size: 9px !important; table-layout: auto !important; }
-    #tab-leaderboard thead th { padding: 4px 3px !important; font-size: 8px !important; }
-    #tab-leaderboard tbody td { padding: 4px 3px !important; }
-    #lb-podium { min-height: 110px !important; margin-bottom: 12px !important; }
+    /* Summary card */
+    .summary-card { box-shadow: none !important; margin-bottom: 8px !important; }
   }
 
 
@@ -828,7 +698,7 @@ window.parseFile = parseFile;
   .drop-zone.error   { border-color: var(--red);   background: var(--red-bg);   border-style: solid; }
   .drop-icon { font-size: 32px; margin-bottom: 10px; }
   .drop-title { font-weight: 700; font-size: 13px; color: var(--text); margin-bottom: 4px; }
-  .drop-filename { font-size: 11px; color: var(--muted); font-family: 'DM Mono', monospace; margin-bottom: 8px; }
+  .drop-filename { font-size: 11px; color: #555; font-family: 'DM Mono', monospace; margin-bottom: 8px; }
   .drop-status { font-size: 11px; font-weight: 600; margin-top: 8px; min-height: 16px; }
   .drop-status.ok  { color: var(--green); }
   .drop-status.err { color: var(--red); }
@@ -837,7 +707,7 @@ window.parseFile = parseFile;
   .log-line { padding: 3px 0; border-bottom: 1px solid var(--border); }
   .log-line.ok  { color: var(--green); }
   .log-line.err { color: var(--red); }
-  .log-line.info{ color: var(--muted); }
+  .log-line.info{ color: #555; }
 
 </style>
 </head>
@@ -870,11 +740,8 @@ window.parseFile = parseFile;
     </button>
   </div>
   <div class="header-right-info">
-    <div class="period-chip data-period-range"></div>
+    <div class="period-chip">03/01 – 03/23/26</div>
     <button onclick="window.print()" style="background:#1a56db;color:#fff;border:none;border-radius:5px;padding:5px 14px;font-size:11px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">🖨 Print All</button>
-    <button onclick="printTab('pursuit','gppace')" style="background:#475569;color:#fff;border:none;border-radius:5px;padding:5px 14px;font-size:11px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">🖨 Summary</button>
-    <button onclick="printTab('advisors')" style="background:#475569;color:#fff;border:none;border-radius:5px;padding:5px 14px;font-size:11px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">🖨 Scorecard</button>
-    <button onclick="printTab('leaderboard')" style="background:#475569;color:#fff;border:none;border-radius:5px;padding:5px 14px;font-size:11px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">🖨 Leaderboard</button>
   </div>
 </div>
 
@@ -883,7 +750,7 @@ window.parseFile = parseFile;
   <div class="panel-header">
     <div>
       <div class="panel-title">Infinite Pursuit Projections</div>
-      <div class="panel-sub">Store performance vs standards · <span class="data-month-mtd"></span></div>
+      <div class="panel-sub">MTD vs Standards · ▲▼ arrows show change from YTD · March 2026</div>
     </div>
     <div class="period-badge">Goal: 70 pts</div>
   </div>
@@ -899,7 +766,7 @@ window.parseFile = parseFile;
         <thead>
           <tr class="group-row">
             <th class="left">Store</th>
-            <th>Points</th><th>GP%</th><th>Total YoY%</th><th>CP RO YoY%</th><th>CP GP YoY%</th>
+            <th>Points</th><th>GP%</th><th>Total YoY%</th><th>CP YoY%</th>
             <th>Align%</th><th>Valv%</th><th>Tires%</th><th>Policy%</th><th>Op Profit%</th>
           </tr>
         </thead>
@@ -918,16 +785,14 @@ window.parseFile = parseFile;
         <thead>
           <tr class="group-row">
             <th class="left">Store</th>
-            <th>Points</th>
-            <th>Service GP%</th>
-            <th>Total GP YoY</th>
-            <th>CP RO YoY</th>
-            <th>CP GP YoY</th>
-            <th>Alignment%</th>
-            <th>Valvoline%</th>
-            <th>Tires%</th>
-            <th>Policy%</th>
-            <th>Op Profit%</th>
+            <th>Points<br><span style="font-weight:400;opacity:.65">▲▼ vs YTD</span></th>
+            <th>Service GP%<br><span style="font-weight:400;opacity:.65">Goal 75%</span></th>
+            <th>Total GP YoY<br><span style="font-weight:400;opacity:.65">▲▼ vs YTD</span></th>
+            <th>CP YoY<br><span style="font-weight:400;opacity:.65">▲▼ vs YTD</span></th>
+            <th>Alignment%<br><span style="font-weight:400;opacity:.65">Goal 10%</span></th>
+            <th>Valvoline%<br><span style="font-weight:400;opacity:.65">Goal 23%</span></th>
+            <th>Tires%<br><span style="font-weight:400;opacity:.65">Goal 15%</span></th>
+            <th>Op Profit%<br><span style="font-weight:400;opacity:.65">Per-store goal</span></th>
           </tr>
         </thead>
         <tbody id="pursuit-tbody"></tbody>
@@ -944,7 +809,10 @@ window.parseFile = parseFile;
       <div class="panel-sub">Projected Month-End vs Prior Year</div>
     </div>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-      <div class="period-badge data-date-badge"></div>
+      <div style="font-size:11px;color:#555;font-family:'DM Mono',monospace;background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:5px 12px">
+        📂 To update Total GP: upload <strong>TOTAL_GROUP_GROSS_REVIEW.xlsx</strong>
+      </div>
+      <div class="period-badge">Week ending 03/23/26</div>
     </div>
   </div>
 
@@ -1008,14 +876,14 @@ window.parseFile = parseFile;
   <div class="panel-header">
     <div>
       <div class="panel-title">Service Advisor Scorecard</div>
-      <div class="panel-sub"><span class="data-month-mtd"></span></div>
+      <div class="panel-sub">March 2026 MTD · 17 working days</div>
     </div>
     <div style="display:flex;align-items:center;gap:12px">
       <div class="legend">
         <div class="legend-item"><div class="l-dot" style="background:var(--green)"></div>At / Above Goal</div>
         <div class="legend-item"><div class="l-dot" style="background:var(--red)"></div>Below 60% of Goal</div>
       </div>
-      <div class="period-badge data-date-badge"></div>
+      <div class="period-badge">03/01 – 03/23/26</div>
     </div>
   </div>
 
@@ -1027,36 +895,16 @@ window.parseFile = parseFile;
     <button class="filter-btn" onclick="filterStore(this,'kia')">Kia</button>
     <button class="filter-btn" onclick="filterStore(this,'hyundai')">Laf Hyundai</button>
     <button class="filter-btn" onclick="filterStore(this,'indy')">Indy Hyundai</button>
-    <span style="margin-left:auto"></span>
-    <button class="filter-btn" onclick="toggleAdvisorMgr()" style="background:#1e293b;color:#fff;border-color:#1e293b" id="btn-manage-advisors">⚙ Manage Advisors</button>
-  </div>
-
-  <!-- Advisor Management Panel -->
-  <div id="advisor-mgr-panel" style="display:none;margin-bottom:16px">
-    <div class="summary-card" style="padding:16px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-        <div style="font-weight:700;font-size:13px;color:var(--text)">Select Active Advisors</div>
-        <div style="display:flex;gap:8px">
-          <button onclick="advisorMgrSelectAll(true)" style="font-size:11px;padding:4px 12px;border:1px solid var(--border2);border-radius:4px;background:var(--surface);cursor:pointer;font-weight:600;color:var(--green)">✓ Select All</button>
-          <button onclick="advisorMgrSelectAll(false)" style="font-size:11px;padding:4px 12px;border:1px solid var(--border2);border-radius:4px;background:var(--surface);cursor:pointer;font-weight:600;color:var(--red)">✗ Deselect All</button>
-          <button onclick="saveAdvisorSelections()" style="font-size:11px;padding:6px 16px;border:none;border-radius:4px;background:var(--accent);color:#fff;cursor:pointer;font-weight:700">Save &amp; Apply</button>
-        </div>
-      </div>
-      <div id="advisor-mgr-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:4px"></div>
-      <div style="font-size:10px;color:var(--muted);margin-top:10px">Deselected advisors are hidden from the Scorecard and Leaderboard. Changes are saved to your browser.</div>
-    </div>
   </div>
 
   <div class="table-wrap">
     <div class="table-scroll">
-      <table class="sa-table">
+      <table style="min-width:1050px">
         <thead>
           <tr class="group-row">
             <th class="left" rowspan="2" style="min-width:160px">Advisor</th>
             <th rowspan="2">RO Count<br><span style="font-weight:400;opacity:.65">Goal 170</span></th>
             <th rowspan="2">Open<br>ROs</th>
-            <th rowspan="2">CP<br>Hrs</th>
-            <th rowspan="2">Warr<br>Hrs</th>
             <th rowspan="2">RAP<br>Hrs/RO<br><span style="font-weight:400;opacity:.65">Goal 1.5</span></th>
             <th rowspan="2">Discount<br><span style="font-weight:400;opacity:.65">Total $</span></th>
             <th rowspan="2">ELR<br>After Disc</th>
@@ -1100,14 +948,24 @@ function switchTab(id, btn) {
 // INFINITE PURSUIT DATA
 // ══════════════════════════════════════════════════════
 const pursuitStores = [
-  { name:'Bob Rohrman Honda',    css:'honda',      points:45,  gpPct:75.26, totalYoy:-0.89, cpRoYoy:16.12, cpYoy:44.58, align:7.53,  valv:40.43, tires:13.83, policy:0.20, opProfit:30.92 },
-  { name:'Bob Rohrman Toyota',   css:'toyota',     points:60,  gpPct:76.78, totalYoy:14.23, cpRoYoy:27.07, cpYoy:5.79,  align:9.00,  valv:30.29, tires:8.53,  policy:0.70, opProfit:24.76 },
-  { name:'Bob Rohrman Kia',      css:'kia',        points:70,  gpPct:75.65, totalYoy:21.26, cpRoYoy:16.49, cpYoy:24.48, align:10.53, valv:30.70, tires:16.40, policy:0.38, opProfit:8.09  },
-  { name:'Bob Rohrman Hyundai',  css:'lafhyundai', points:100, gpPct:77.53, totalYoy:34.40, cpRoYoy:10.76, cpYoy:10.53, align:13.06, valv:26.12, tires:15.56, policy:-0.06,opProfit:17.77 },
-  { name:'Indy Hyundai',         css:'indyhyundai',points:15,  gpPct:77.22, totalYoy:-9.52, cpRoYoy:5.62,  cpYoy:-35.43,align:7.66,  valv:13.14, tires:74.57, policy:1.91, opProfit:7.37  },
+  { name:'Bob Rohrman Honda',   css:'honda',       opGoal:35,
+    points:45,  gpPct:75.28, totalYoy:-2.11,  cpYoy:44.17, align:8.05,  valv:39.64, tires:14.11, policy:0.19, opProfit:30.06,
+    ytdPts:40,  ytdGp:75.13, ytdTotalYoy:-9.26, ytdCpYoy:14.05, ytdAlign:9.87,  ytdValv:40.63, ytdTires:18.18, ytdPolicy:1.00, ytdOp:17.95 },
+  { name:'Bob Rohrman Toyota',  css:'toyota',      opGoal:30,
+    points:60,  gpPct:76.92, totalYoy:15.82,  cpYoy:7.63,  align:9.67,  valv:30.79, tires:8.57,  policy:0.71, opProfit:25.79,
+    ytdPts:40,  ytdGp:76.75, ytdTotalYoy:4.43,  ytdCpYoy:0.52,  ytdAlign:11.17, ytdValv:29.73, ytdTires:14.00, ytdPolicy:1.58, ytdOp:19.43 },
+  { name:'Bob Rohrman Kia',     css:'kia',         opGoal:10,
+    points:70,  gpPct:75.79, totalYoy:23.21,  cpYoy:23.44, align:10.61, valv:31.28, tires:18.95, policy:0.39, opProfit:9.55,
+    ytdPts:70,  ytdGp:75.89, ytdTotalYoy:29.19, ytdCpYoy:43.06, ytdAlign:12.88, ytdValv:30.73, ytdTires:15.28, ytdPolicy:1.53, ytdOp:7.97 },
+  { name:'Bob Rohrman Hyundai', css:'lafhyundai',  opGoal:10,
+    points:100, gpPct:77.57, totalYoy:30.49,  cpYoy:6.24,  align:12.17, valv:24.33, tires:15.79, policy:0.04, opProfit:15.30,
+    ytdPts:90,  ytdGp:77.08, ytdTotalYoy:30.21, ytdCpYoy:13.94, ytdAlign:13.08, ytdValv:20.87, ytdTires:11.96, ytdPolicy:0.15, ytdOp:12.31 },
+  { name:'Indy Hyundai',        css:'indyhyundai', opGoal:10,
+    points:15,  gpPct:77.35, totalYoy:-11.03, cpYoy:-32.60,align:7.67,  valv:14.29, tires:72.34, policy:1.82, opProfit:5.80,
+    ytdPts:30,  ytdGp:76.12, ytdTotalYoy:6.44,  ytdCpYoy:-11.02,ytdAlign:7.70, ytdValv:15.18, ytdTires:37.09, ytdPolicy:1.87, ytdOp:7.55 },
 ];
 
-const STD = { gpPct:75, totalYoy:5, cpRoYoy:5, cpYoy:5, align:10, valv:23, tires:15, policy:1.6, opProfit:8 };
+const STD = { gpPct:75, totalYoy:0, cpYoy:0, align:10, valv:23, tires:15, policy:3 }; // opProfit goal is per-store via s.opGoal
 
 function pursuitChip(val, goal, fmt) {
   // kept for compatibility but replaced inline in renderPursuit
@@ -1115,66 +973,991 @@ function pursuitChip(val, goal, fmt) {
   return `<span class="chip ${ok?'flat':'down'}">${fmt(val)}</span>`;
 }
 
-function pmVal(displayVal, numericVal, goal) {
-  // Card metric: red text + dot if missing goal, green if meeting
-  const miss = numericVal < goal;
+function pmVal(val, goal, rawVal) {
+  // val = display string, goal = numeric goal, rawVal = numeric value
+  const miss = rawVal < goal;
   const dot = miss ? '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--red);margin-right:4px;vertical-align:middle"></span>' : '';
-  return `${dot}<span style="color:${miss?'var(--red)':'var(--green)'};font-weight:600">${displayVal}</span>`;
+  return `${dot}<span style="color:${miss?'var(--red)':'var(--text2)'};font-weight:${miss?'600':'400'}">${val}</span>`;
+}
+
+function trendArrow(mtd, ytd) {
+  if (mtd === null || ytd === null) return '';
+  const diff = mtd - ytd;
+  if (Math.abs(diff) < 0.05) return '<span style="color:#555;font-size:11px;margin-left:4px">—</span>';
+  if (diff > 0) return `<span style="color:var(--green);font-size:11px;margin-left:4px">▲ ${Math.abs(diff).toFixed(1)}</span>`;
+  return `<span style="color:var(--red);font-size:11px;margin-left:4px">▼ ${Math.abs(diff).toFixed(1)}</span>`;
 }
 
 function renderPursuit() {
   const grid = document.getElementById('pursuit-grid');
   const tbody = document.getElementById('pursuit-tbody');
+  if (!grid || !tbody) return;
   grid.innerHTML = '';
   tbody.innerHTML = '';
 
+  const GOAL = 70;
+
   pursuitStores.forEach(s => {
-    const GOAL = 70;
-    const barColor = s.points > 30 ? 'var(--green)' : 'var(--red)';
-    const ptColor  = s.points <= 30 ? 'var(--red)' : s.points >= GOAL ? 'var(--green)' : 'var(--text)';
-    const fmtPct = (v) => (v > 0 ? '+' : '') + v.toFixed(1) + '%';
+    const ptColor = s.points >= GOAL ? 'var(--green)' : 'var(--red)';
+    const barColor = s.points >= GOAL ? 'var(--green)' : 'var(--red)';
+    const ptDiff = s.points - s.ytdPts;
+    const ptTrend = ptDiff > 0
+      ? `<span style="color:var(--green);font-size:11px">▲ vs YTD</span>`
+      : ptDiff < 0
+      ? `<span style="color:var(--red);font-size:11px">▼ vs YTD</span>`
+      : `<span style="color:#555;font-size:11px">= YTD</span>`;
+
     grid.innerHTML += `
       <div class="pursuit-card">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
-          <div class="pursuit-store" style="margin-bottom:0">${s.name}</div>
-          <div>${storeLogo[s.name]||''}</div>
+        <div class="pursuit-store">${s.name}</div>
+        <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:4px">
+          <div class="pursuit-points" style="color:${ptColor}">${s.points}</div>
+          <div style="font-size:11px;color:#555">pts &nbsp;${ptTrend}</div>
         </div>
-        <div class="pursuit-points" style="color:${ptColor}">${s.points}</div>
-        <div class="pursuit-label">pursuit points <span style="color:var(--muted)">/ ${GOAL} goal</span></div>
-        <div class="pursuit-bar-track">
+        <div class="pursuit-label">MTD pursuit points <span style="color:#555">/ ${GOAL} goal &nbsp;·&nbsp; YTD: ${s.ytdPts}</span></div>
+        <div class="pursuit-bar-track" style="margin:10px 0 14px">
           <div class="pursuit-bar-fill" style="width:${Math.min(s.points/GOAL*100,100)}%;background:${barColor}"></div>
         </div>
-        <div class="pursuit-metrics" style="grid-template-columns:1fr 1fr 1fr">
-          <div class="pm-item"><div class="pm-label">GP% <span class="pm-goal">≥75%</span></div><div class="pm-val">${pmVal(s.gpPct.toFixed(1)+'%', s.gpPct, STD.gpPct)}</div></div>
-          <div class="pm-item"><div class="pm-label">Total YoY <span class="pm-goal">≥5%</span></div><div class="pm-val">${pmVal(fmtPct(s.totalYoy), s.totalYoy, STD.totalYoy)}</div></div>
-          <div class="pm-item"><div class="pm-label">CP RO YoY <span class="pm-goal">≥5%</span></div><div class="pm-val">${pmVal(fmtPct(s.cpRoYoy), s.cpRoYoy, STD.cpRoYoy)}</div></div>
-          <div class="pm-item"><div class="pm-label">CP GP YoY <span class="pm-goal">≥5%</span></div><div class="pm-val">${pmVal(fmtPct(s.cpYoy), s.cpYoy, STD.cpYoy)}</div></div>
-          <div class="pm-item"><div class="pm-label">Alignment <span class="pm-goal">≥10%</span></div><div class="pm-val">${pmVal(s.align.toFixed(1)+'%', s.align, STD.align)}</div></div>
-          <div class="pm-item"><div class="pm-label">Valvoline <span class="pm-goal">≥23%</span></div><div class="pm-val">${pmVal(s.valv.toFixed(1)+'%', s.valv, STD.valv)}</div></div>
-          <div class="pm-item"><div class="pm-label">Tires <span class="pm-goal">≥15%</span></div><div class="pm-val">${pmVal(s.tires.toFixed(1)+'%', s.tires, STD.tires)}</div></div>
-          <div class="pm-item"><div class="pm-label">Policy <span class="pm-goal">≤1.6%</span></div><div class="pm-val">${pmVal(s.policy.toFixed(2)+'%', s.policy <= STD.policy ? 999 : -1, 0)}</div></div>
-          <div class="pm-item"><div class="pm-label">Op Profit <span class="pm-goal">≥8%</span></div><div class="pm-val">${pmVal(s.opProfit.toFixed(1)+'%', s.opProfit, STD.opProfit)}</div></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;padding-top:10px;border-top:1px solid var(--border)">
+          ${metricRow('GP%',       s.gpPct,    s.ytdGp,       75,        false)}
+          ${metricRow('Total YoY', s.totalYoy, s.ytdTotalYoy, 0,         false)}
+          ${metricRow('CP YoY',    s.cpYoy,    s.ytdCpYoy,    0,         false)}
+          ${metricRow('Alignment', s.align,    s.ytdAlign,    STD.align, false)}
+          ${metricRow('Valvoline', s.valv,     s.ytdValv,     STD.valv,  false)}
+          ${metricRow('Tires',     s.tires,    s.ytdTires,    STD.tires, false)}
+          ${metricRow('Policy%',   s.policy,   s.ytdPolicy,   1.6,       true)}
+          ${metricRow('Op Profit', s.opProfit, s.ytdOp,       s.opGoal,  false)}
         </div>
       </div>`;
 
-    const p = n => n.toFixed(1) + '%';
-    // Table: red dot on miss only
-    const rDot = (v, g) => v < g ? '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--red);margin-right:4px;vertical-align:middle"></span>' : '';
-    const rCell = (v, g, fmt) => `<td class="num"><div class="val-wrap">${rDot(v,g)}<span style="color:${v<g?'var(--red)':'var(--text2)'};${v<g?'font-weight:600':''}">${fmt(v)}</span></div></td>`;
+    // Table row
+    const rDot = (v,g) => v < g ? '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--red);margin-right:4px;vertical-align:middle"></span>' : '';
+    const rCell = (mtd, ytd, g, fmt) => {
+      const miss = mtd < g;
+      const arrow = trendArrow(mtd, ytd);
+      return `<td class="num"><div class="val-wrap">${rDot(mtd,g)}<span style="color:${miss?'var(--red)':'var(--text2)'};${miss?'font-weight:600':''}">${fmt(mtd)}</span>${arrow}</div></td>`;
+    };
+    const p = n => n.toFixed(1)+'%';
     tbody.innerHTML += `<tr>
       <td class="left">${s.name}</td>
-      <td class="num"><strong style="color:${s.points<=30?'var(--red)':s.points>=70?'var(--green)':'var(--text)'}">${s.points}</strong></td>
-      ${rCell(s.gpPct,    STD.gpPct,    p)}
-      ${rCell(s.totalYoy, STD.totalYoy, v=>(s.totalYoy>0?'+':'')+p(s.totalYoy))}
-      ${rCell(s.cpRoYoy,  STD.cpRoYoy,  v=>(s.cpRoYoy>0?'+':'')+p(s.cpRoYoy))}
-      ${rCell(s.cpYoy,    STD.cpYoy,    v=>(s.cpYoy>0?'+':'')+p(s.cpYoy))}
-      ${rCell(s.align,    STD.align,    p)}
-      ${rCell(s.valv,     STD.valv,     p)}
-      ${rCell(s.tires,    STD.tires,    p)}
-      ${rCell(s.policy <= STD.policy ? 999 : -1, 0, v=>p(s.policy))}
-      ${rCell(s.opProfit, STD.opProfit, p)}
+      <td class="num">
+        <strong style="color:${s.points>=GOAL?'var(--green)':'var(--red)'}">${s.points}</strong>
+        ${trendArrow(s.points, s.ytdPts)}
+      </td>
+      ${rCell(s.gpPct,    s.ytdGp,        75,        p)}
+      ${rCell(s.totalYoy, s.ytdTotalYoy,  0,         v=>(v>0?'+':'')+p(v))}
+      ${rCell(s.cpYoy,    s.ytdCpYoy,     0,         v=>(v>0?'+':'')+p(v))}
+      ${rCell(s.align,    s.ytdAlign,     STD.align,  p)}
+      ${rCell(s.valv,     s.ytdValv,      STD.valv,   p)}
+      ${rCell(s.tires,    s.ytdTires,     STD.tires,  p)}
+      ${rCell(s.opProfit, s.ytdOp,        s.opGoal,   p)}
     </tr>`;
   });
+}
+
+function metricRow(label, mtd, ytd, goal, lowerBetter) {
+  const miss = lowerBetter ? mtd > goal : mtd < goal;
+  const color = miss ? 'var(--red)' : '#111';
+  const dot = miss ? '<span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--red);margin-right:3px;vertical-align:middle"></span>' : '';
+  // Arrow: symbol only, no number
+  const diff = mtd - ytd;
+  const up = diff > 0.05;
+  const dn = diff < -0.05;
+  const arrowColor = lowerBetter ? (up ? 'var(--red)' : 'var(--green)') : (up ? 'var(--green)' : 'var(--red)');
+  const arrowSym = up ? '▲' : dn ? '▼' : '';
+  const arrow = arrowSym ? `<span style="font-size:10px;color:${arrowColor};margin-left:2px">${arrowSym}</span>` : '';
+  const valStr = (label === 'Total YoY' || label === 'CP YoY') ? (mtd>0?'+':'')+mtd.toFixed(1)+'%' : mtd.toFixed(1)+'%';
+  return `<div style="background:var(--surface2);border-radius:6px;padding:7px 8px;text-align:center">
+    <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.7px;color:#555;margin-bottom:3px">${label}</div>
+    <div style="font-family:'DM Mono',monospace;font-size:12px;font-weight:600;color:${color}">${dot}${valStr}${arrow}</div>
+  </div>`;
+}
+
+
+// ── PARSE GP TOTALS ──
+function parseGP(wb, filename) {
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+  let updated = 0;
+
+  rows.forEach(row => {
+    const dealerId = Number(row[0]);
+    if (!ROHRMAN_IDS.includes(dealerId)) return;
+    // Row structure: col0=dealer id, col6=projected total labor, col8=projected total YoY%
+    // G row (index 26 = 'G' days) — col4=LY total, col6=projected, col8=YoY pct
+    const proj  = Number(row[6])  || 0;
+    const ly    = Number(row[4])  || 0;
+    const yoy   = Number(row[8])  || 0;
+
+    const store = gpStores.find(s => {
+      const idMap = { honda:1712, toyota:1713, kia:1714, lafhyundai:1715, indyhyundai:1718 };
+      return idMap[s.id] === dealerId;
+    });
+    if (store && proj > 0) {
+      store.total    = proj;
+      store.lyTotal  = ly;
+      store.totalYoy = yoy * 100;
+      updated++;
+    }
+  });
+
+  if (updated > 0) {
+    renderGPCards();
+    gpRenderTable();
+    upStatus('gp', `✓ Updated ${updated} stores`, 'ok');
+    upLog(`GP Totals: updated ${updated} stores from ${filename}`, 'ok');
+  } else {
+    upStatus('gp', '⚠ No matching stores found', 'err');
+    upLog(`GP Totals: no Rohrman stores found in ${filename}`, 'err');
+  }
+}
+
+// ── PARSE SA TOTALS ──
+function parseSA(wb, filename) {
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+  if (rows.length < 2) { upStatus('sa','⚠ Empty file','err'); return; }
+
+  // Row 0 is headers
+  const headers = rows[0].map(h => String(h).trim().toUpperCase());
+  const col = name => headers.findIndex(h => h.includes(name));
+
+  const C = {
+    dealer:    col('DEALER ID'),
+    advisor:   col('SERVICE ADVISOR NAME'),
+    ro:        col('REPAIR ORDER TOTAL COUNT'),
+    disc:      col('TOTAL DISCOUNT'),
+    rap:       col('RAP HRS'),
+    elr:       col('ELR  AFTER'),
+    alignPct:  col('ALIGNMENT PEN'),
+    alignCnt:  col('CP ONLY REPLACE'),
+    tirePct:   col('TIRE PEN'),
+    tireCnt:   col('CP TIRE CNT'),
+    valvPct:   col('VALVOLINE PEN'),
+    valvCnt:   col('VALVOLINE TOTAL FLUSH'),
+  };
+
+  upLog(`SA columns mapped: RO=${C.ro} DISC=${C.disc} RAP=${C.rap} ELR=${C.elr}`, 'info');
+
+  const newData = [];
+  rows.slice(1).forEach(row => {
+    const dealerId = Number(row[C.dealer]);
+    if (!ROHRMAN_IDS.includes(dealerId)) return;
+    const advisorName = String(row[C.advisor] || '').trim();
+    if (!advisorName || advisorName.startsWith('NUMBER OF')) return;
+    const ro = Number(row[C.ro]) || 0;
+    if (ro < 10) return;
+
+    newData.push({
+      store:    STORE_NAMES[dealerId] || 'Unknown',
+      key:      STORE_KEYS[dealerId]  || 'honda',
+      name:     advisorName,
+      ro:       ro,
+      disc:     Math.round(Number(row[C.disc])     || 0),
+      rap:      Number(row[C.rap])     || 0,
+      elr:      Math.round(Number(row[C.elr])      || 0),
+      alignPct: (Number(row[C.alignPct]) || 0) * 100,
+      alignCnt: Math.round(Number(row[C.alignCnt]) || 0),
+      tirePct:  (Number(row[C.tirePct])  || 0) * 100,
+      tireCnt:  Math.round(Number(row[C.tireCnt])  || 0),
+      valvPct:  (Number(row[C.valvPct])  || 0) * 100,
+      valvCnt:  Math.round(Number(row[C.valvCnt])  || 0),
+      email:    saAdvisors.find(a => a.name.toUpperCase() === advisorName.toUpperCase())?.email    ?? null,
+      vidSent:  saAdvisors.find(a => a.name.toUpperCase() === advisorName.toUpperCase())?.vidSent  ?? null,
+      vidViewed:saAdvisors.find(a => a.name.toUpperCase() === advisorName.toUpperCase())?.vidViewed?? null,
+      onlinePay:saAdvisors.find(a => a.name.toUpperCase() === advisorName.toUpperCase())?.onlinePay?? null,
+      openRo:   saAdvisors.find(a => a.name.toUpperCase() === advisorName.toUpperCase())?.openRo   ?? null,
+    });
+  });
+
+  // Remove Lacey and Esparza
+  const filtered = newData.filter(a => 
+    !['ROBERT LACEY','ERNESTO ESPARZA'].includes(a.name.toUpperCase())
+  );
+
+  if (filtered.length > 0) {
+    saAdvisors.length = 0;
+    filtered.forEach(a => saAdvisors.push(a));
+    saRenderTable();
+    renderLeaderboard();
+  buildCSIGrid();
+    upStatus('sa', `✓ Loaded ${filtered.length} advisors`, 'ok');
+    upLog(`SA Totals: loaded ${filtered.length} advisors from ${filename}`, 'ok');
+  } else {
+    upStatus('sa', '⚠ No advisors found', 'err');
+    upLog(`SA Totals: no valid advisors found in ${filename}`, 'err');
+  }
+}
+
+// ── PARSE EMAIL ──
+function parseEmail(wb, filename) {
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+  // Find header row (has 'ADVISOR' and 'Pen %')
+  let headerRow = -1;
+  rows.forEach((r, i) => { if (String(r[4]).toUpperCase().includes('ADVISOR')) headerRow = i; });
+  if (headerRow < 0) { upStatus('email','⚠ Header not found','err'); return; }
+
+  let updated = 0;
+  rows.slice(headerRow + 1).forEach(row => {
+    const dealerId = Number(row[2]);
+    if (!ROHRMAN_IDS.includes(dealerId)) return;
+    const advName = String(row[4] || '').trim().toUpperCase();
+    const pen = Number(row[9]) || 0;
+    const match = saAdvisors.find(a => a.name.toUpperCase() === advName);
+    if (match && pen > 0) { match.email = +(pen * 100).toFixed(1); updated++; }
+  });
+
+  saRenderTable();
+  upStatus('email', `✓ Updated ${updated} advisors`, 'ok');
+  upLog(`Email: updated ${updated} advisors from ${filename}`, 'ok');
+}
+
+// ── PARSE WIP ──
+function parseWIP(wb, filename) {
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+  const ROHRMAN = {1712:'honda',1713:'toyota',1714:'kia',1715:'hyundai',1718:'indy'};
+  let updated = 0;
+
+  let currentDealer = null;
+  const buckets = [];
+
+  rows.forEach(row => {
+    const v0 = Number(row[0]);
+    if (ROHRMAN[v0]) {
+      if (currentDealer && buckets.length >= 3) {
+        const total = buckets.reduce((s,b) => s + (Number(b[5])||0), 0);
+        const over30 = (Number(buckets[2]?.[5])||0) + (Number(buckets[3]?.[5])||0);
+        const store = gpStores.find(s => s.id === ROHRMAN[currentDealer]);
+        if (store) { store.openRo = total; store.over30 = over30; updated++; }
+      }
+      currentDealer = v0;
+      buckets.length = 0;
+    } else if (currentDealer && (String(row[2]).includes('CURRENT') || String(row[1]).includes('-'))) {
+      buckets.push(row);
+    }
+  });
+  // Last dealer
+  if (currentDealer && buckets.length >= 3) {
+    const total = buckets.reduce((s,b) => s + (Number(b[5])||0), 0);
+    const over30 = (Number(buckets[2]?.[5])||0) + (Number(buckets[3]?.[5])||0);
+    const store = gpStores.find(s => s.id === ROHRMAN[currentDealer]);
+    if (store) { store.openRo = total; store.over30 = over30; updated++; }
+  }
+
+  renderGPCards(); gpRenderTable();
+  upStatus('wip', `✓ Updated ${updated} stores`, updated > 0 ? 'ok' : 'err');
+  upLog(`WIP: updated ${updated} stores from ${filename}`, updated > 0 ? 'ok' : 'err');
+}
+
+// ── PARSE PURSUIT PDF ──
+// Column order from report: GP% | TotalGPYoY | CPROYoY | CPGPYoY | Align | Valv | Tires | Policy | OpProfit | SERVICE POINTS
+const PURSUIT_STORE_MAP = {
+  'bob rohrman honda':    0,
+  'bob rohrman toyota':   1,
+  'bob rohrman kia':      2,
+  'bob rohrman hyundai genesis': 3,
+  'indy hyundai genesis': 4,
+};
+
+function parsePursuit(file) {
+  // Read as text using FileReader — PDFs from this report have extractable text
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const bytes = new Uint8Array(e.target.result);
+      // Extract text using a simple byte scan for readable ASCII lines
+      let text = '';
+      for (let i = 0; i < bytes.length; i++) {
+        const c = bytes[i];
+        if (c >= 32 && c < 127) text += String.fromCharCode(c);
+        else if (c === 10 || c === 13) text += '\n';
+      }
+
+      const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 10);
+      let updated = 0;
+
+      lines.forEach(line => {
+        const lower = line.toLowerCase();
+        let storeIdx = -1;
+        for (const [name, idx] of Object.entries(PURSUIT_STORE_MAP)) {
+          if (lower.includes(name)) { storeIdx = idx; break; }
+        }
+        if (storeIdx < 0) return;
+
+        // Extract all numbers from the line
+        const nums = line.match(/-?\d+\.\d+%?|-?\d+%?/g);
+        if (!nums || nums.length < 10) return;
+
+        const pct = v => parseFloat(String(v).replace('%',''));
+        const s = pursuitStores[storeIdx];
+        // Try to find the SERVICE POINTS value (integer, 0-100)
+        // It appears after the 9 metric columns
+        const allNums = nums.map(n => parseFloat(String(n).replace('%','')));
+
+        // Find points: look for a clean integer between 0-100 after at least 9 numbers
+        let pointsVal = null;
+        for (let j = 8; j < allNums.length; j++) {
+          if (Number.isInteger(allNums[j]) && allNums[j] >= 0 && allNums[j] <= 100) {
+            pointsVal = allNums[j]; break;
+          }
+        }
+
+        if (allNums.length >= 9) {
+          s.gpPct     = allNums[0];
+          s.totalYoy  = allNums[1];
+          // skip cpRoYoy (col 2)
+          s.cpYoy     = allNums[3];
+          s.align     = allNums[4];
+          s.valv      = allNums[5];
+          s.tires     = allNums[6];
+          s.policy    = allNums[7];
+          s.opProfit  = allNums[8];
+          if (pointsVal !== null) s.points = pointsVal;
+          updated++;
+        }
+      });
+
+      if (updated > 0) {
+        renderPursuit();
+        buildPursuitEntry();
+        upStatus('pursuit', `✓ Updated ${updated} stores`, 'ok');
+        upLog(`Pursuit: updated ${updated} stores from ${file.name}`, 'ok');
+      } else {
+        // Fallback: show manual entry panel with instructions
+        upStatus('pursuit', '⚠ Auto-parse limited — use manual entry panel on Infinite Pursuit tab', 'err');
+        upLog(`Pursuit: PDF text extraction limited for ${file.name} — use the manual entry panel`, 'err');
+        // Switch to pursuit tab and open entry panel
+        document.querySelectorAll('.tab-btn').forEach(b => { if (b.textContent.includes('Infinite')) b.click(); });
+        const p = document.getElementById('pursuit-entry-panel');
+        if (p) { p.style.display = 'block'; document.getElementById('pursuit-toggle-icon').textContent = 'COLLAPSE ▲'; }
+      }
+    } catch(err) {
+      upStatus('pursuit', '✗ Error: ' + err.message, 'err');
+      upLog('Pursuit parse error: ' + err.message, 'err');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ── PARSE ADVISOR TECHNOLOGY ──
+function parseTech(wb, filename) {
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+  // Find header row (row with 'DEALER ID' and 'Service Advisor')
+  let headerRow = -1;
+  rows.forEach((r, i) => { if (String(r[14]).toUpperCase().includes('DEALER ID') && String(r[32]).toUpperCase().includes('SERVICE')) headerRow = i; });
+  if (headerRow < 0) {
+    // Try alternate header detection
+    rows.forEach((r, i) => { if (String(r[0]).toUpperCase().includes('DEALER ID/RO')) headerRow = i; });
+  }
+  if (headerRow < 0) { upStatus('tech','⚠ Header not found','err'); upLog('Tech: header row not found','err'); return; }
+
+  // Col indices (0-based): dealer=14, advisor=32, vidSent=99, vidViewed=107, onlinePay=118
+  const aggData = {};
+  rows.slice(headerRow + 1).forEach(row => {
+    const dealerId = Number(row[14]);
+    if (!ROHRMAN_IDS.includes(dealerId)) return;
+    const adv = String(row[32] || '').trim().toUpperCase();
+    if (!adv) return;
+    const key = dealerId + '|' + adv;
+    if (!aggData[key]) aggData[key] = { vidSentSum:0, vidViewedSum:0, onlinePaySum:0, cnt:0 };
+    const vs = Number(row[99]) || 0;
+    const vv = Number(row[107]) || 0;
+    const op = Number(row[118]) || 0;
+    if (vs > 0 || vv > 0 || op > 0) {
+      aggData[key].vidSentSum   += vs;
+      aggData[key].vidViewedSum += vv;
+      aggData[key].onlinePaySum += op;
+      aggData[key].cnt++;
+    }
+  });
+
+  let updated = 0;
+  Object.entries(aggData).forEach(([key, d]) => {
+    if (d.cnt === 0) return;
+    const advName = key.split('|')[1];
+    const match = saAdvisors.find(a => a.name.toUpperCase() === advName);
+    if (match) {
+      match.vidSent   = +(d.vidSentSum   / d.cnt * 100).toFixed(1);
+      match.vidViewed = +(d.vidViewedSum / d.cnt * 100).toFixed(1);
+      match.onlinePay = +(d.onlinePaySum / d.cnt * 100).toFixed(1);
+      updated++;
+    }
+  });
+
+  saRenderTable();
+  upStatus('tech', `✓ Updated ${updated} advisors`, 'ok');
+  upLog(`Tech: updated ${updated} advisors from ${filename}`, 'ok');
+}
+
+</script>
+<style>
+  /* ── SHARED VARIABLES ── */
+  :root {
+    --bg:        #f4f6f9;
+    --surface:   #ffffff;
+    --surface2:  #f0f2f5;
+    --border:    #e2e6ed;
+    --border2:   #d0d5de;
+    --text:      #0f1623;
+    --text2:     #111827;
+    --muted:     #555555;
+    --green:     #0f9b58;
+    --green-bg:  #edfaf3;
+    --red:       #d93025;
+    --red-bg:    #fdf0ef;
+    --accent:    #1a56db;
+    --accent-bg: #eef3ff;
+    --top-bg:    #ecfdf5;
+    --top-text:  #065f46;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; font-size: 13px; min-height: 100vh; }
+
+  /* ── GLOBAL HEADER ── */
+  .global-header {
+    background: #1e293b;
+    padding: 0 24px;
+    display: flex;
+    align-items: stretch;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 200;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  }
+  .header-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 0;
+  }
+  .brand-logo {
+    font-size: 16px;
+    font-weight: 800;
+    color: #ffffff;
+    letter-spacing: -0.5px;
+  }
+  .brand-divider { width: 1px; height: 20px; background: #334155; }
+  .brand-sub { font-size: 11px; color: #64748b; font-family: 'DM Mono', monospace; text-transform: uppercase; letter-spacing: 0.8px; }
+
+  /* ── TAB NAV ── */
+  .tab-nav {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+  }
+  .tab-btn {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 0 20px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #64748b;
+    cursor: pointer;
+    border: none;
+    background: none;
+    font-family: 'Inter', sans-serif;
+    border-bottom: 3px solid transparent;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .tab-btn:hover { color: #cbd5e1; }
+  .tab-btn.active { color: #ffffff; border-bottom-color: #1a56db; }
+  .tab-icon { font-size: 14px; }
+
+  /* ── HEADER RIGHT ── */
+  .header-right-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 0;
+  }
+  .period-chip {
+    background: rgba(26,86,219,0.2);
+    color: #93c5fd;
+    font-size: 10px;
+    font-weight: 600;
+    font-family: 'DM Mono', monospace;
+    padding: 3px 10px;
+    border-radius: 4px;
+    border: 1px solid rgba(26,86,219,0.3);
+  }
+
+  /* ── TAB PANELS ── */
+  .tab-panel { display: none; padding: 24px; }
+  .tab-panel.active { display: block; }
+
+  /* ── PANEL SECTION HEADER ── */
+  .panel-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    padding-bottom: 14px;
+    border-bottom: 2px solid var(--border);
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .panel-title { font-size: 18px; font-weight: 700; letter-spacing: -0.4px; }
+  .panel-sub { font-size: 11px; color: #555; font-family: 'DM Mono', monospace; text-transform: uppercase; letter-spacing: 0.8px; margin-top: 3px; }
+
+  /* ── SHARED CARD ── */
+  .summary-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+  .summary-card-header { padding: 11px 16px; border-bottom: 1px solid var(--border); font-size: 11px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.8px; font-family: 'DM Mono', monospace; background: var(--surface2); }
+
+  /* ── PURSUIT CARDS ── */
+  .pursuit-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .pursuit-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+  .pursuit-store { font-size:14px; font-weight:700; color:var(--text); margin-bottom:10px; }
+  .pursuit-points { font-family:'DM Mono',monospace; font-size:36px; font-weight:700; line-height:1; color:var(--text); }
+  .pursuit-label { font-size:10px; color:#555; margin-top:2px; }
+  .pursuit-bar-track { height:4px; background:var(--border); border-radius:2px; overflow:hidden; margin:10px 0 8px; }
+  .pursuit-bar-fill { height:100%; border-radius:2px; }
+  .pursuit-metrics { display:grid; grid-template-columns:1fr 1fr; gap:6px; border-top:1px solid var(--border); padding-top:10px; margin-top:4px; }
+  .pm-item { text-align:center; }
+  .pm-label { font-size:9px; text-transform:uppercase; letter-spacing:0.5px; color:#555; margin-bottom:2px; }
+  .pm-val { font-family:'DM Mono',monospace; font-size:12px; font-weight:600; color:var(--text); }
+  .pm-val.good { color:var(--green); }
+  .pm-val.bad  { color:var(--red); }
+
+  /* ── GP PACE STYLES ── */
+  .stores-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(290px,1fr)); gap:12px; margin-bottom:20px; }
+  .store-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:16px; position:relative; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.05); }
+  .store-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; }
+  .store-card.honda::before      { background:#cc2222; }
+  .store-card.toyota::before     { background:#c8820a; }
+  .store-card.kia::before        { background:#2563eb; }
+  .store-card.lafhyundai::before { background:#0891b2; }
+  .store-card.indyhyundai::before{ background:#7c3aed; }
+  .card-store-name { font-size:11px; font-weight:600; color:#555; text-transform:uppercase; letter-spacing:0.8px; margin-bottom:10px; display:flex; align-items:center; gap:6px; }
+  .store-dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; display:inline-block; }
+  .dot-honda       { background:#cc2222; }
+  .dot-toyota      { background:#c8820a; }
+  .dot-kia         { background:#2563eb; }
+  .dot-lafhyundai  { background:#0891b2; }
+  .dot-indyhyundai { background:#7c3aed; }
+  .gp-total-row { display:flex; align-items:flex-end; justify-content:space-between; margin-bottom:10px; }
+  .gp-amount { font-family:'DM Mono',monospace; font-size:28px; font-weight:500; color:var(--text); line-height:1; letter-spacing:-1px; }
+  .gp-ly { font-family:'DM Mono',monospace; font-size:10px; color:#555; text-align:right; line-height:1.7; }
+  .yoy-badge { display:inline-flex; align-items:center; gap:4px; font-family:'DM Mono',monospace; font-size:12px; font-weight:600; padding:3px 8px; border-radius:5px; margin-bottom:12px; }
+  .yoy-badge.up   { background:var(--green-bg); color:var(--green); }
+  .yoy-badge.down { background:var(--red-bg);   color:var(--red); }
+  .yoy-badge.flat { background:var(--surface2); color:#555; }
+  .pace-bar-track { height:4px; background:var(--border); border-radius:2px; overflow:hidden; margin-bottom:14px; }
+  .pace-bar-fill  { height:100%; border-radius:2px; transition:width 0.5s ease; }
+  .pace-bar-fill.up   { background:var(--green); }
+  .pace-bar-fill.down { background:var(--red); }
+  .pace-bar-fill.flat { background:var(--muted); }
+  .cc-breakdown { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; padding-top:12px; border-top:1px solid var(--border); }
+  .cc-item { text-align:center; }
+  .cc-label { font-size:9px; text-transform:uppercase; letter-spacing:0.8px; color:#555; margin-bottom:2px; font-weight:500; }
+  .cc-value { font-family:'DM Mono',monospace; font-size:12px; font-weight:500; color:var(--text); }
+  .cc-yoy { font-family:'DM Mono',monospace; font-size:10px; margin-top:1px; font-weight:500; }
+  .cc-yoy.up   { color:var(--green); }
+  .cc-yoy.down { color:var(--red); }
+  .cc-yoy.flat { color:#555; }
+  .cost-center-nav { display:flex; gap:4px; margin-bottom:18px; flex-wrap:wrap; }
+  .cc-btn { background:var(--surface); border:1px solid var(--border2); border-radius:6px; padding:6px 16px; font-size:12px; font-weight:500; color:var(--text2); cursor:pointer; font-family:'Inter',sans-serif; transition:all 0.12s; }
+  .cc-btn:hover { background:var(--surface2); border-color:var(--accent); color:var(--accent); }
+  .cc-btn.active { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+  .entry-input { background:var(--surface); border:1px solid var(--border2); border-radius:4px; padding:4px 7px; color:var(--text); font-family:'DM Mono',monospace; font-size:12px; width:100px; text-align:right; }
+  .entry-input:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 2px rgba(26,86,219,0.1); }
+  .apply-btn { margin-top:14px; background:var(--accent); color:#fff; border:none; border-radius:6px; padding:8px 20px; font-size:13px; font-weight:600; cursor:pointer; font-family:'Inter',sans-serif; }
+
+  /* ── SA SCORECARD STYLES ── */
+  .filters { display:flex; gap:5px; margin-bottom:16px; flex-wrap:wrap; align-items:center; }
+  .filter-label { font-size:11px; color:#555; font-weight:600; margin-right:2px; text-transform:uppercase; letter-spacing:0.5px; }
+  /* CSI */
+  .csi-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:8px; margin-bottom:16px; }
+  .csi-item { display:flex; align-items:center; gap:10px; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:10px 12px; cursor:pointer; transition:all 0.12s; }
+  .csi-item:hover { border-color:var(--accent); }
+  .csi-item.csi-on { border-color:var(--green); background:var(--green-bg); }
+  .csi-check { width:18px; height:18px; border-radius:4px; border:2px solid var(--border2); display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:12px; }
+  .csi-on .csi-check { background:var(--green); border-color:var(--green); color:#fff; }
+  .csi-name { font-size:12px; font-weight:600; color:var(--text); }
+  .csi-store { font-size:10px; color:#555; margin-top:1px; }
+  .csi-badge { display:inline-block; font-size:9px; font-weight:700; background:#edfaf3; color:#0f9b58; border:1px solid #0f9b58; border-radius:3px; padding:1px 5px; margin-left:6px; vertical-align:middle; letter-spacing:0.5px; }
+  .filter-btn { background:var(--surface); border:1px solid var(--border2); border-radius:6px; padding:5px 14px; font-size:12px; font-weight:500; color:var(--text2); cursor:pointer; transition:all 0.12s; }
+  .filter-btn:hover { border-color:var(--accent); color:var(--accent); }
+  .filter-btn.active { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+  .table-wrap { background:var(--surface); border:1px solid var(--border); border-radius:10px; overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,0.05); }
+  .table-scroll { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; font-size:12px; }
+  thead tr.group-row th { background:#1e293b; color:#cbd5e1; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:1px; padding:10px 12px; font-family:'DM Mono',monospace; border-right:1px solid #334155; text-align:center; white-space:nowrap; vertical-align:middle; }
+  thead tr.group-row th.left { text-align:left; }
+  thead tr.group-row th.group-divider { border-left:2px solid #475569; }
+  thead tr.sub-row th { background:#f1f5f9; color:#555; font-size:9.5px; font-weight:600; text-transform:uppercase; letter-spacing:0.6px; padding:6px 12px; font-family:'DM Mono',monospace; border-bottom:2px solid var(--border2); border-right:1px solid var(--border); text-align:center; white-space:nowrap; }
+  thead tr.sub-row th.left { text-align:left; }
+  tbody tr { border-bottom:1px solid var(--border); }
+  tbody tr:last-child { border-bottom:none; }
+  tbody tr:hover td { background:#f8fafc; }
+  tbody tr.store-hdr td { background:#1e293b; color:#64748b; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:1.2px; padding:7px 14px; font-family:'DM Mono',monospace; }
+  tbody tr.store-total td { background:#f8fafc; color:var(--text2); font-weight:600; font-family:'DM Mono',monospace; font-size:11px; padding:8px 12px; border-top:2px solid var(--border2); }
+  td { padding:10px 12px; white-space:nowrap; border-right:1px solid var(--border); color:var(--text); vertical-align:middle; }
+  td:last-child { border-right:none; }
+  td.num { text-align:right; font-family:'DM Mono',monospace; color:var(--text2); }
+  td.left { text-align:left; }
+  td.gdiv, th.gdiv { border-left:2px solid var(--border2) !important; }
+  .adv-name { font-weight:600; font-size:12px; color:var(--text); }
+  .val-wrap { display:flex; align-items:center; justify-content:flex-end; gap:5px; }
+  .status-dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+  .dot-green { background:var(--green); }
+  .dot-miss  { background:var(--red); }
+  .v-ok-green { color:var(--green); font-weight:600; }
+  .v-miss     { color:var(--red);   font-weight:600; }
+  .v-neu      { color:var(--text2); }
+  .ro-cell { display:flex; flex-direction:column; align-items:flex-end; gap:3px; }
+  .ro-bar-track { width:52px; height:3px; background:var(--border2); border-radius:2px; overflow:hidden; }
+  .ro-bar-fill  { height:100%; border-radius:2px; }
+  .legend { display:flex; gap:14px; align-items:center; font-size:11px; color:#555; }
+  .legend-item { display:flex; align-items:center; gap:5px; }
+  .l-dot { width:8px; height:8px; border-radius:50%; }
+
+  /* ── SHARED TABLE ── */
+  .period-badge { background:var(--accent-bg); color:var(--accent); font-size:11px; font-weight:600; font-family:'DM Mono',monospace; padding:5px 12px; border-radius:5px; border:1px solid #c3d3f7; white-space:nowrap; }
+  .chip { display:inline-block; padding:2px 7px; border-radius:4px; font-size:11px; font-family:'DM Mono',monospace; font-weight:600; }
+  .chip.up   { background:var(--green-bg); color:var(--green); }
+  .chip.down { background:var(--red-bg);   color:var(--red); }
+  .chip.flat { background:var(--surface2); color:#555; }
+  .total-row td { font-weight:700; background:#f0f4ff; border-top:2px solid #c3d3f7; }
+
+  /* ── PRINT ── */
+  @media print {
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    body { background: #fff !important; font-size: 10px; padding: 0; }
+
+    .global-header { position: static; background: #1e293b !important; padding: 8px 16px; box-shadow: none; margin-bottom: 12px; }
+    .tab-nav { display: none !important; }
+    .header-right-info { display: none !important; }
+
+    /* Show ALL panels stacked */
+    .tab-panel { display: block !important; padding: 0 14px 20px; }
+
+    /* Section breaks between panels */
+    #tab-gppace  { border-top: 2px solid #e2e6ed; padding-top: 16px; }
+    #tab-advisors { border-top: 2px solid #e2e6ed; padding-top: 16px; page-break-before: always; }
+    #tab-leaderboard { border-top: 2px solid #e2e6ed; padding-top: 16px; page-break-before: always; }
+
+    /* Panel headers smaller */
+    .panel-title { font-size: 14px !important; }
+    .panel-sub   { font-size: 9px !important; }
+    .panel-header { margin-bottom: 10px; padding-bottom: 8px; }
+
+    /* Hide interactive controls */
+    .cost-center-nav { display: none !important; }
+    .filters         { display: none !important; }
+    #entry-panel     { display: none !important; }
+    .summary-card-header[onclick] { cursor: default; }
+    #entry-toggle-icon { display: none !important; }
+    .apply-btn { display: none !important; }
+
+    /* Compact cards */
+    .stores-grid  { grid-template-columns: repeat(5, 1fr) !important; gap: 6px !important; margin-bottom: 10px !important; }
+    .pursuit-grid { grid-template-columns: repeat(5, 1fr) !important; gap: 6px !important; margin-bottom: 10px !important; }
+    .store-card, .pursuit-card { padding: 10px !important; }
+    .gp-amount    { font-size: 18px !important; }
+    .pursuit-points { font-size: 26px !important; }
+
+    /* Tables compact */
+    table { font-size: 9px !important; min-width: 0 !important; width: 100% !important; }
+    thead tr.group-row th { padding: 5px 6px !important; font-size: 8px !important; }
+    thead tr.sub-row th   { padding: 3px 6px !important; font-size: 7.5px !important; }
+    tbody td { padding: 5px 6px !important; }
+    tbody tr.store-hdr td { padding: 4px 8px !important; }
+
+    /* Table wrap no overflow clipping */
+    .table-wrap   { box-shadow: none !important; border-radius: 4px !important; overflow: visible !important; }
+    .table-scroll { overflow: visible !important; }
+
+    /* Summary card */
+    .summary-card { box-shadow: none !important; margin-bottom: 8px !important; }
+  }
+
+
+  /* ── UPLOAD TAB ── */
+  .upload-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .drop-zone {
+    background: var(--surface);
+    border: 2px dashed var(--border2);
+    border-radius: 10px;
+    padding: 28px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .drop-zone:hover, .drop-zone.drag-over { border-color: var(--accent); background: var(--accent-bg); }
+  .drop-zone.success { border-color: var(--green); background: var(--green-bg); border-style: solid; }
+  .drop-zone.error   { border-color: var(--red);   background: var(--red-bg);   border-style: solid; }
+  .drop-icon { font-size: 32px; margin-bottom: 10px; }
+  .drop-title { font-weight: 700; font-size: 13px; color: var(--text); margin-bottom: 4px; }
+  .drop-filename { font-size: 11px; color: #555; font-family: 'DM Mono', monospace; margin-bottom: 8px; }
+  .drop-status { font-size: 11px; font-weight: 600; margin-top: 8px; min-height: 16px; }
+  .drop-status.ok  { color: var(--green); }
+  .drop-status.err { color: var(--red); }
+  /* file inputs are hidden and triggered by buttons */
+  .upload-log { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; font-family: 'DM Mono', monospace; font-size: 11px; color: var(--text2); max-height: 200px; overflow-y: auto; }
+  .log-line { padding: 3px 0; border-bottom: 1px solid var(--border); }
+  .log-line.ok  { color: var(--green); }
+  .log-line.err { color: var(--red); }
+  .log-line.info{ color: #555; }
+
+</style>
+</head>
+<body>
+
+
+
+<!-- ══ GLOBAL HEADER ══ -->
+<div class="global-header">
+  <div class="header-brand">
+    <div class="brand-logo">Rohrman Fixed Ops</div>
+    <div class="brand-divider"></div>
+    <div class="brand-sub">Director Dashboard</div>
+  </div>
+  <div class="tab-nav">
+    <button class="tab-btn active" onclick="switchTab('pursuit', this)">
+      <span class="tab-icon">🎯</span> Infinite Pursuit
+    </button>
+    <button class="tab-btn" onclick="switchTab('gppace', this)">
+      <span class="tab-icon">📈</span> GP Pace
+    </button>
+    <button class="tab-btn" onclick="switchTab('advisors', this)">
+      <span class="tab-icon">👤</span> Advisor Scorecard
+    </button>
+    <button class="tab-btn" onclick="switchTab('leaderboard', this)">
+      <span class="tab-icon">🏆</span> Leaderboard
+    </button>
+    <button class="tab-btn" onclick="switchTab('upload', this)">
+      <span class="tab-icon">📂</span> Upload Data
+    </button>
+  </div>
+  <div class="header-right-info">
+    <div class="period-chip">03/01 – 03/23/26</div>
+    <button onclick="window.print()" style="background:#1a56db;color:#fff;border:none;border-radius:5px;padding:5px 14px;font-size:11px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">🖨 Print All</button>
+  </div>
+</div>
+
+<!-- ══ TAB: INFINITE PURSUIT ══ -->
+<div class="tab-panel active" id="tab-pursuit">
+  <div class="panel-header">
+    <div>
+      <div class="panel-title">Infinite Pursuit Projections</div>
+      <div class="panel-sub">Store performance vs standards · March 2026 MTD</div>
+    </div>
+    <div class="period-badge">Goal: 70 pts</div>
+  </div>
+
+  <!-- Pursuit manual entry -->
+  <div class="summary-card" style="margin-bottom:16px">
+    <div class="summary-card-header" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="togglePursuit()">
+      <span>✏️ Update Pursuit Points & Metrics (click to expand)</span>
+      <span id="pursuit-toggle-icon" style="color:var(--accent);font-size:10px;font-weight:700">EXPAND ▼</span>
+    </div>
+    <div id="pursuit-entry-panel" style="display:none;padding:16px;overflow-x:auto">
+      <table>
+        <thead>
+          <tr class="group-row">
+            <th class="left">Store</th>
+            <th>Points</th><th>GP%</th><th>Total YoY%</th><th>CP YoY%</th>
+            <th>Align%</th><th>Valv%</th><th>Tires%</th><th>Policy%</th><th>Op Profit%</th>
+          </tr>
+        </thead>
+        <tbody id="pursuit-entry-tbody"></tbody>
+      </table>
+      <button class="apply-btn" onclick="applyPursuit()">Apply &amp; Update Dashboard</button>
+    </div>
+  </div>
+
+  <div class="pursuit-grid" id="pursuit-grid"></div>
+
+  <div class="summary-card">
+    <div class="summary-card-header">All Stores · Pursuit Summary</div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr class="group-row">
+            <th class="left">Store</th>
+            <th>Points</th>
+            <th>Service GP%</th>
+            <th>Total GP YoY</th>
+            <th>CP YoY</th>
+            <th>Alignment%</th>
+            <th>Valvoline%</th>
+            <th>Tires%</th>
+            <th>Policy%</th>
+            <th>Op Profit%</th>
+          </tr>
+        </thead>
+        <tbody id="pursuit-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══ TAB: GP PACE ══ -->
+<div class="tab-panel" id="tab-gppace">
+  <div class="panel-header">
+    <div>
+      <div class="panel-title">Gross Profit Pace</div>
+      <div class="panel-sub">Projected Month-End vs Prior Year</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <div style="font-size:11px;color:#555;font-family:'DM Mono',monospace;background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:5px 12px">
+        📂 To update Total GP: upload <strong>TOTAL_GROUP_GROSS_REVIEW.xlsx</strong>
+      </div>
+      <div class="period-badge">Week ending 03/23/26</div>
+    </div>
+  </div>
+
+  <div class="summary-card">
+    <div class="summary-card-header" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="toggleEntry()">
+      <span>✏️ Enter CP / Warranty / Internal — Projected &amp; LY (click to expand)</span>
+      <span id="entry-toggle-icon" style="color:var(--accent);font-size:10px;font-weight:700">EXPAND ▼</span>
+    </div>
+    <div id="entry-panel" style="display:none;padding:16px;overflow-x:auto">
+      <table>
+        <thead>
+          <tr class="group-row">
+            <th class="left">Store</th>
+            <th colspan="2" style="text-align:center;color:#93c5fd">Customer Pay</th>
+            <th colspan="2" style="text-align:center;color:#67e8f9">Warranty</th>
+            <th colspan="2" style="text-align:center;color:#c4b5fd">Internal</th>
+          </tr>
+          <tr class="sub-row">
+            <th></th>
+            <th>Projected</th><th>LY</th>
+            <th>Projected</th><th>LY</th>
+            <th>Projected</th><th>LY</th>
+          </tr>
+        </thead>
+        <tbody id="entry-tbody"></tbody>
+      </table>
+      <button class="apply-btn" onclick="applyEntries()">Apply &amp; Update Dashboard</button>
+    </div>
+  </div>
+
+  <div class="cost-center-nav">
+    <button class="cc-btn active" onclick="setCC(this,'all')">All Cost Centers</button>
+    <button class="cc-btn" onclick="setCC(this,'cp')">Customer Pay</button>
+    <button class="cc-btn" onclick="setCC(this,'warranty')">Warranty</button>
+    <button class="cc-btn" onclick="setCC(this,'internal')">Internal</button>
+  </div>
+
+  <div class="stores-grid" id="stores-grid"></div>
+
+  <div class="summary-card">
+    <div class="summary-card-header">All Stores · GP Pace Summary</div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr class="group-row">
+            <th class="left">Store</th>
+            <th>Projected</th><th>LY Actual</th><th>YoY %</th>
+            <th>CP Proj</th><th>CP YoY%</th>
+            <th>Warr Proj</th><th>Warr YoY%</th>
+            <th>Int Proj</th><th>Int YoY%</th>
+          </tr>
+        </thead>
+        <tbody id="gp-summary-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══ TAB: ADVISOR SCORECARD ══ -->
+<div class="tab-panel" id="tab-advisors">
+  <div class="panel-header">
+    <div>
+      <div class="panel-title">Service Advisor Scorecard</div>
+      <div class="panel-sub">March 2026 MTD · 17 working days</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <div class="legend">
+        <div class="legend-item"><div class="l-dot" style="background:var(--green)"></div>At / Above Goal</div>
+        <div class="legend-item"><div class="l-dot" style="background:var(--red)"></div>Below 60% of Goal</div>
+      </div>
+      <div class="period-badge">03/01 – 03/23/26</div>
+    </div>
+  </div>
+
+  <div class="filters">
+    <span class="filter-label">Store</span>
+    <button class="filter-btn active" onclick="filterStore(this,'all')">All</button>
+    <button class="filter-btn" onclick="filterStore(this,'honda')">Honda</button>
+    <button class="filter-btn" onclick="filterStore(this,'toyota')">Toyota</button>
+    <button class="filter-btn" onclick="filterStore(this,'kia')">Kia</button>
+    <button class="filter-btn" onclick="filterStore(this,'hyundai')">Laf Hyundai</button>
+    <button class="filter-btn" onclick="filterStore(this,'indy')">Indy Hyundai</button>
+  </div>
+
+  <div class="table-wrap">
+    <div class="table-scroll">
+      <table style="min-width:1050px">
+        <thead>
+          <tr class="group-row">
+            <th class="left" rowspan="2" style="min-width:160px">Advisor</th>
+            <th rowspan="2">RO Count<br><span style="font-weight:400;opacity:.65">Goal 170</span></th>
+            <th rowspan="2">Open<br>ROs</th>
+            <th rowspan="2">RAP<br>Hrs/RO<br><span style="font-weight:400;opacity:.65">Goal 1.5</span></th>
+            <th rowspan="2">Discount<br><span style="font-weight:400;opacity:.65">Total $</span></th>
+            <th rowspan="2">ELR<br>After Disc</th>
+            <th colspan="2" class="group-divider">Alignment<br><span style="font-weight:400;opacity:.65">Goal 10%</span></th>
+            <th colspan="2" class="group-divider">Tires<br><span style="font-weight:400;opacity:.65">Goal 15%</span></th>
+            <th colspan="2" class="group-divider">Valvoline<br><span style="font-weight:400;opacity:.65">Goal 23%</span></th>
+            <th class="group-divider" rowspan="2">Email<br>Capture<br><span style="font-weight:400;opacity:.65">Goal 90%</span></th>
+            <th class="group-divider" rowspan="2">Video<br>Sent<br><span style="font-weight:400;opacity:.65">Goal 75%</span></th>
+            <th rowspan="2">Video<br>Viewed<br><span style="font-weight:400;opacity:.65">Goal 25%</span></th>
+            <th rowspan="2">Online<br>Pay %</th>
+          </tr>
+          <tr class="sub-row">
+            <th class="gdiv">Pen %</th><th>Cnt</th>
+            <th class="gdiv">Pen %</th><th>Cnt</th>
+            <th class="gdiv">Pen %</th><th>Cnt</th>
+          </tr>
+        </thead>
+        <tbody id="sa-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════
+// TAB SWITCHING
+// ══════════════════════════════════════════════════════
+function switchTab(id, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p => {
+    p.classList.remove('active');
+    p.style.display = 'none';
+  });
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  const panel = document.getElementById('tab-' + id);
+  panel.classList.add('active');
+  panel.style.display = 'block';
+  btn.classList.add('active');
+}
+
+// ══════════════════════════════════════════════════════
+// INFINITE PURSUIT DATA
+// ══════════════════════════════════════════════════════
+
+
+function pursuitChip(val, goal, fmt) {
+  // kept for compatibility but replaced inline in renderPursuit
+  const ok = val >= goal;
+  return `<span class="chip ${ok?'flat':'down'}">${fmt(val)}</span>`;
+}
+
+function pmVal(val, goal) {
+  // Card metric: red text + dot if missing, neutral otherwise
+  const miss = val < goal;
+  const dot = miss ? '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--red);margin-right:4px;vertical-align:middle"></span>' : '';
+  return `${dot}<span style="color:${miss?'var(--red)':'var(--text2)'};font-weight:${miss?'600':'400'}">${val}</span>`;
 }
 
 // ══════════════════════════════════════════════════════
@@ -1182,23 +1965,21 @@ function renderPursuit() {
 // ══════════════════════════════════════════════════════
 let gpStores = [
   { id:'honda',       name:'Bob Rohrman Honda',    cssClass:'honda',
-    total:192877.70,  lyTotal:194527.50,
-    cp:118381, lyCp:81880, warranty:24343, lyWarranty:56376, internal:51754, lyInternal:52694 },
+    total:195609.80,  lyTotal:194527.50,  totalYoy:0.5564,
+    cp:0, lyCp:0, warranty:0, lyWarranty:0, internal:0, lyInternal:0 },
   { id:'toyota',      name:'Bob Rohrman Toyota',   cssClass:'toyota',
-    total:289328.79,  lyTotal:253287.65,
-    cp:155891, lyCp:147362, warranty:59905, lyWarranty:48302, internal:78118, lyInternal:58799 },
+    total:287073.62,  lyTotal:253287.65,  totalYoy:13.3390,
+    cp:0, lyCp:0, warranty:0, lyWarranty:0, internal:0, lyInternal:0 },
   { id:'kia',         name:'Bob Rohrman Kia',      cssClass:'kia',
-    total:147916.96,  lyTotal:121986.14,
-    cp:66326, lyCp:53282, warranty:39594, lyWarranty:28805, internal:44821, lyInternal:45960 },
+    total:142174.50,  lyTotal:121986.14,  totalYoy:16.5497,
+    cp:0, lyCp:0, warranty:0, lyWarranty:0, internal:0, lyInternal:0 },
   { id:'lafhyundai',  name:'Bob Rohrman Hyundai',  cssClass:'lafhyundai',
-    total:137852.30,  lyTotal:107470.78,
-    cp:56795, lyCp:53186, warranty:48867, lyWarranty:28849, internal:37525, lyInternal:28316 },
+    total:139042.14,  lyTotal:107470.78,  totalYoy:29.3767,
+    cp:0, lyCp:0, warranty:0, lyWarranty:0, internal:0, lyInternal:0 },
   { id:'indyhyundai', name:'Indy Hyundai',          cssClass:'indyhyundai',
-    total:149390.51,  lyTotal:165885.28,
-    cp:38566, lyCp:59726, warranty:39613, lyWarranty:35541, internal:69265, lyInternal:76255 },
+    total:149175.25,  lyTotal:165885.28,  totalYoy:-10.0732,
+    cp:0, lyCp:0, warranty:0, lyWarranty:0, internal:0, lyInternal:0 },
 ];
-// Always compute totalYoy dynamically
-gpStores.forEach(s => { s.totalYoy = gpCalcYoy(s.total, s.lyTotal); });
 
 function gpCalcYoy(c,l){return(l&&l!==0)?((c-l)/l*100):null;}
 function gpFmt$(n){return n?'$'+(n/1000).toFixed(1)+'k':'$0';}
@@ -1212,38 +1993,20 @@ let gpCurrentCC = 'all';
 function renderGPCards() {
   const grid = document.getElementById('stores-grid');
   grid.innerHTML = '';
-  
-  // Map store IDs to SA advisor keys for open RO aggregation
-  const storeKeyMap = {honda:'honda',toyota:'toyota',kia:'kia',lafhyundai:'hyundai',indyhyundai:'indy'};
-  
   gpStores.forEach(s => {
     const d = gpDir(s.totalYoy);
     const pw = Math.min(Math.abs(s.totalYoy)*3,100);
     const varAmt = s.total - s.lyTotal;
     const varStr = (varAmt>=0?'+':'-')+'$'+Math.abs(Math.round(varAmt)).toLocaleString();
-    
-    // Get open RO count: from WIP upload or sum from SA advisors
-    let openRoCount = s.openRo || 0;
-    let over30Count = s.over30 || 0;
-    if (!openRoCount && typeof getActiveAdvisors === 'function') {
-      const key = storeKeyMap[s.id];
-      const storeAdvisors = getActiveAdvisors().filter(a => a.key === key);
-      openRoCount = storeAdvisors.reduce((sum, a) => sum + (a.openRo || 0), 0);
-    }
-    
-    const openRoHtml = openRoCount ? '<div style="text-align:center;padding:8px 0 4px;border-top:1px solid var(--border);margin-top:6px"><span style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);font-weight:600">Open ROs </span><span style="font-family:\'DM Mono\',monospace;font-size:20px;font-weight:800;color:var(--text)">' + openRoCount + '</span>' + (over30Count ? '<div style="font-size:10px;color:var(--red);font-weight:600;margin-top:2px">' + over30Count + ' over 30 days</div>' : '') + '</div>' : '';
-    
     grid.innerHTML += `
       <div class="store-card ${s.cssClass}">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-          <div class="card-store-name" style="margin-bottom:0"><span class="store-dot dot-${s.cssClass}"></span>${s.name}</div>
-          <div>${storeLogo[s.name]||''}</div>
+        <div class="card-store-name"><span class="store-dot dot-${s.cssClass}"></span>${s.name}</div>
+        <div class="gp-total-row">
+          <div class="gp-amount">${gpFmt$(s.total)}</div>
+          <div class="gp-ly"><span>LY ${gpFull$(s.lyTotal)}</span><span style="color:${varAmt>=0?'var(--green)':'var(--red)'}">${varStr}</span></div>
         </div>
-        <div class="gp-amount">${gpFmt$(s.total)}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px">LY ${gpFmt$(s.lyTotal)}</div>
-        <div class="yoy-badge ${d}" style="margin-top:6px">${gpArrow(s.totalYoy)} ${gpPct(s.totalYoy)} YoY <span style="font-size:11px;color:${varAmt>=0?'var(--green)':'var(--red)'};font-weight:600">${(varAmt>=0?'+':'-')}$${Math.round(Math.abs(varAmt)/1000)}k</span></div>
+        <div class="yoy-badge ${d}">${gpArrow(s.totalYoy)} ${gpPct(s.totalYoy)} YoY</div>
         <div class="pace-bar-track"><div class="pace-bar-fill ${d}" style="width:${pw}%"></div></div>
-        ${openRoHtml}
         <div class="cc-breakdown">${renderGPCC(s)}</div>
       </div>`;
   });
@@ -1270,7 +2033,7 @@ function gpRenderTable() {
     const cpY=gpCalcYoy(s.cp,s.lyCp),wY=gpCalcYoy(s.warranty,s.lyWarranty),iY=gpCalcYoy(s.internal,s.lyInternal);
     rows+=`<tr>
       <td class="left"><div style="display:flex;align-items:center;gap:8px"><span class="store-dot dot-${s.cssClass}"></span>${s.name}</div></td>
-      <td class="num">${gpFull$(s.total)}</td><td class="num" style="color:var(--muted)">${gpFull$(s.lyTotal)}</td>
+      <td class="num">${gpFull$(s.total)}</td><td class="num" style="color:#555">${gpFull$(s.lyTotal)}</td>
       <td class="num"><span class="chip ${gpDir(s.totalYoy)}">${gpArrow(s.totalYoy)} ${gpPct(s.totalYoy)}</span></td>
       <td class="num">${gpFull$(s.cp)}</td><td class="num"><span class="chip ${gpDir(cpY)}">${gpArrow(cpY)} ${gpPct(cpY)}</span></td>
       <td class="num">${gpFull$(s.warranty)}</td><td class="num"><span class="chip ${gpDir(wY)}">${gpArrow(wY)} ${gpPct(wY)}</span></td>
@@ -1280,7 +2043,7 @@ function gpRenderTable() {
   const gY=gpCalcYoy(tT,lyT),gCP=gpCalcYoy(tCP,lyCP),gW=gpCalcYoy(tW,lyW),gI=gpCalcYoy(tI,lyI);
   rows+=`<tr class="total-row">
     <td class="left" style="color:var(--accent);font-weight:700">GROUP TOTAL</td>
-    <td class="num">${gpFull$(tT)}</td><td class="num" style="color:var(--muted)">${gpFull$(lyT)}</td>
+    <td class="num">${gpFull$(tT)}</td><td class="num" style="color:#555">${gpFull$(lyT)}</td>
     <td class="num"><span class="chip ${gpDir(gY)}">${gpArrow(gY)} ${gpPct(gY)}</span></td>
     <td class="num">${gpFull$(tCP)}</td><td class="num"><span class="chip ${gpDir(gCP)}">${gpArrow(gCP)} ${gpPct(gCP)}</span></td>
     <td class="num">${gpFull$(tW)}</td><td class="num"><span class="chip ${gpDir(gW)}">${gpArrow(gW)} ${gpPct(gW)}</span></td>
@@ -1308,24 +2071,17 @@ function buildEntryTable() {
 function toggleEntry(){const p=document.getElementById('entry-panel');const open=p.style.display==='none';p.style.display=open?'block':'none';document.getElementById('entry-toggle-icon').textContent=open?'COLLAPSE ▲':'EXPAND ▼';}
 
 function applyEntries(){
-  try {
-    gpStores.forEach((s,i)=>{
-      s.cp        =parseFloat(document.getElementById('cp_'+i).value)||0;
-      s.lyCp      =parseFloat(document.getElementById('lycp_'+i).value)||0;
-      s.warranty  =parseFloat(document.getElementById('war_'+i).value)||0;
-      s.lyWarranty=parseFloat(document.getElementById('lywar_'+i).value)||0;
-      s.internal  =parseFloat(document.getElementById('int_'+i).value)||0;
-      s.lyInternal=parseFloat(document.getElementById('lyint_'+i).value)||0;
-    });
-    renderGPCards();gpRenderTable();
-    document.getElementById('entry-panel').style.display='none';
-    document.getElementById('entry-toggle-icon').textContent='EXPAND ▼';
-    upLog('Applied CP/Warranty/Internal entries for ' + gpStores.length + ' stores', 'ok');
-  } catch(err) {
-    upLog('applyEntries error: ' + err.message, 'err');
-    console.error('applyEntries error:', err);
-    alert('Error applying entries: ' + err.message);
-  }
+  gpStores.forEach((s,i)=>{
+    s.cp        =parseFloat(document.getElementById(`cp_${i}`).value)||0;
+    s.lyCp      =parseFloat(document.getElementById(`lycp_${i}`).value)||0;
+    s.warranty  =parseFloat(document.getElementById(`war_${i}`).value)||0;
+    s.lyWarranty=parseFloat(document.getElementById(`lywar_${i}`).value)||0;
+    s.internal  =parseFloat(document.getElementById(`int_${i}`).value)||0;
+    s.lyInternal=parseFloat(document.getElementById(`lyint_${i}`).value)||0;
+  });
+  renderGPCards();gpRenderTable();
+  document.getElementById('entry-panel').style.display='none';
+  document.getElementById('entry-toggle-icon').textContent='EXPAND ▼';
 }
 
 // ══════════════════════════════════════════════════════
@@ -1335,24 +2091,24 @@ const saAdvisors = [
   { store:'Bob Rohrman Honda',    key:'honda',   name:'KAYLA MERKEL',         ro:133, disc:1799, rap:2.15, elr:153, alignPct:9.8,  alignCnt:10, tirePct:7.8,  tireCnt:8,  valvPct:49.0, valvCnt:50, email:83.5, vidSent:11.0, vidViewed:28.6, onlinePay:3.9, openRo:13},
   { store:'Bob Rohrman Honda',    key:'honda',   name:'ALEXANDRIA ARTEMIS',   ro:132, disc:1992, rap:1.83, elr:150, alignPct:7.6,  alignCnt:8,  tirePct:5.7,  tireCnt:6,  valvPct:41.0, valvCnt:43, email:87.1, vidSent:7.8,  vidViewed:20.0, onlinePay:8.6, openRo:14},
   { store:'Bob Rohrman Honda',    key:'honda',   name:'BRIAN STELLWAG',       ro:79,  disc:596,  rap:1.87, elr:155, alignPct:6.5,  alignCnt:4,  tirePct:6.5,  tireCnt:4,  valvPct:50.0, valvCnt:31, email:82.2, vidSent:3.9,  vidViewed:33.3, onlinePay:2.6, openRo:7},
-  { store:'Bob Rohrman Honda',    key:'honda',   name:'ANTHONY RAMIREZ',      ro:136, disc:1411, rap:1.25, elr:144, alignPct:2.8,  alignCnt:3,  tirePct:5.6,  tireCnt:6,  valvPct:22.2, valvCnt:24, email:70.0, vidSent:11.3, vidViewed:33.3, onlinePay:0.8, openRo:10},
+  { store:'Bob Rohrman Honda',    key:'honda',   name:'ANTHONY RAMIREZ',      ro:136, disc:1411, rap:1.25, elr:144, alignPct:2.8,  alignCnt:3,  tirePct:5.6,  tireCnt:6,  valvPct:22.2, valvCnt:24, email:70.0, vidSent:11.3, vidViewed:33.3, onlinePay:0.8, openRo:9},
   { store:'Bob Rohrman Honda',    key:'honda',   name:'XION OBOMSAWIN',       ro:104, disc:197,  rap:1.22, elr:129, alignPct:13.3, alignCnt:10, tirePct:8.0,  tireCnt:6,  valvPct:46.7, valvCnt:35, email:82.6, vidSent:11.9, vidViewed:25.0, onlinePay:0.0, openRo:4},
   { store:'Bob Rohrman Toyota',   key:'toyota',  name:'OLIVER LOPEZ-MAYORGA', ro:204, disc:1324, rap:1.09, elr:141, alignPct:4.8,  alignCnt:8,  tirePct:4.8,  tireCnt:8,  valvPct:32.7, valvCnt:55, email:89.8, vidSent:52.5, vidViewed:21.1, onlinePay:2.2, openRo:9},
-  { store:'Bob Rohrman Toyota',   key:'toyota',  name:'Adam Kulaga',           ro:168, disc:2421, rap:1.45, elr:144, alignPct:12.2, alignCnt:16, tirePct:3.8,  tireCnt:5,  valvPct:40.5, valvCnt:53, email:75.8, vidSent:62.1, vidViewed:23.2, onlinePay:5.2, openRo:8},
+  { store:'Bob Rohrman Toyota',   key:'toyota',  name:'Adam Kulaga',           ro:168, disc:2421, rap:1.45, elr:144, alignPct:12.2, alignCnt:16, tirePct:3.8,  tireCnt:5,  valvPct:40.5, valvCnt:53, email:75.8, vidSent:62.1, vidViewed:23.2, onlinePay:5.2, openRo:7},
   { store:'Bob Rohrman Toyota',   key:'toyota',  name:'MATTHEW LENARDO',      ro:144, disc:1082, rap:1.66, elr:156, alignPct:8.5,  alignCnt:9,  tirePct:7.5,  tireCnt:8,  valvPct:26.4, valvCnt:28, email:79.2, vidSent:57.4, vidViewed:20.3, onlinePay:2.3, openRo:11},
   { store:'Bob Rohrman Toyota',   key:'toyota',  name:'MAX TERRY',             ro:162, disc:761,  rap:1.41, elr:153, alignPct:7.4,  alignCnt:9,  tirePct:5.0,  tireCnt:6,  valvPct:24.0, valvCnt:29, email:85.3, vidSent:58.9, vidViewed:19.3, onlinePay:1.4, openRo:16},
   { store:'Bob Rohrman Toyota',   key:'toyota',  name:'BRITTANY GERBER',      ro:150, disc:1387, rap:1.29, elr:148, alignPct:11.4, alignCnt:13, tirePct:3.5,  tireCnt:4,  valvPct:27.2, valvCnt:31, email:83.3, vidSent:63.8, vidViewed:24.4, onlinePay:0.7, openRo:7},
   { store:'Bob Rohrman Toyota',   key:'toyota',  name:'Rebeca Alvarado',      ro:101, disc:0,    rap:0.37, elr:127, alignPct:0.0,  alignCnt:0,  tirePct:0.0,  tireCnt:0,  valvPct:0.0,  valvCnt:0,  email:89.6, vidSent:73.0, vidViewed:28.8, onlinePay:0.0, openRo:0},
   { store:'Bob Rohrman Toyota',   key:'toyota',  name:'JACOB LINSON',         ro:69,  disc:715,  rap:1.47, elr:144, alignPct:13.6, alignCnt:8,  tirePct:1.7,  tireCnt:1,  valvPct:30.5, valvCnt:18, email:81.8, vidSent:64.1, vidViewed:14.6, onlinePay:0.0, openRo:6},
   { store:'Bob Rohrman Kia',      key:'kia',     name:'PHILIP DOVOLIS',       ro:157, disc:1645, rap:1.79, elr:140, alignPct:18.1, alignCnt:21, tirePct:7.8,  tireCnt:9,  valvPct:58.6, valvCnt:68, email:81.4, vidSent:17.9, vidViewed:28.0, onlinePay:3.6, openRo:19},
-  { store:'Bob Rohrman Kia',      key:'kia',     name:'EVAN HANTHORNE',       ro:136, disc:994,  rap:1.10, elr:149, alignPct:6.4,  alignCnt:7,  tirePct:0.9,  tireCnt:1,  valvPct:14.7, valvCnt:16, email:88.0, vidSent:21.1, vidViewed:7.1,  onlinePay:1.5, openRo:29},
-  { store:'Bob Rohrman Kia',      key:'kia',     name:'JOSH LINDSTROM',       ro:119, disc:706,  rap:1.05, elr:139, alignPct:5.6,  alignCnt:5,  tirePct:2.2,  tireCnt:2,  valvPct:17.8, valvCnt:16, email:77.2, vidSent:19.3, vidViewed:22.7, onlinePay:1.8, openRo:34},
+  { store:'Bob Rohrman Kia',      key:'kia',     name:'EVAN HANTHORNE',       ro:136, disc:994,  rap:1.10, elr:149, alignPct:6.4,  alignCnt:7,  tirePct:0.9,  tireCnt:1,  valvPct:14.7, valvCnt:16, email:88.0, vidSent:21.1, vidViewed:7.1,  onlinePay:1.5, openRo:26},
+  { store:'Bob Rohrman Kia',      key:'kia',     name:'JOSH LINDSTROM',       ro:119, disc:706,  rap:1.05, elr:139, alignPct:5.6,  alignCnt:5,  tirePct:2.2,  tireCnt:2,  valvPct:17.8, valvCnt:16, email:77.2, vidSent:19.3, vidViewed:22.7, onlinePay:1.8, openRo:30},
   { store:'Bob Rohrman Hyundai',  key:'hyundai', name:'JORDAN TROXEL',        ro:173, disc:688,  rap:1.41, elr:157, alignPct:22.9, alignCnt:22, tirePct:20.8, tireCnt:20, valvPct:28.1, valvCnt:27, email:87.4, vidSent:73.9, vidViewed:25.7, onlinePay:5.6, openRo:10},
   { store:'Bob Rohrman Hyundai',  key:'hyundai', name:'DAVID RILEY',          ro:156, disc:153,  rap:1.25, elr:157, alignPct:6.7,  alignCnt:6,  tirePct:3.4,  tireCnt:3,  valvPct:29.2, valvCnt:26, email:86.6, vidSent:69.3, vidViewed:26.1, onlinePay:2.4, openRo:9},
-  { store:'Bob Rohrman Hyundai',  key:'hyundai', name:'NEVEN CHASTEEN',       ro:118, disc:175,  rap:1.69, elr:157, alignPct:5.7,  alignCnt:3,  tirePct:7.5,  tireCnt:4,  valvPct:18.9, valvCnt:10, email:89.2, vidSent:59.1, vidViewed:7.7,  onlinePay:6.8, openRo:10},
-  { store:'Indy Hyundai',         key:'indy',    name:'ERICK CONKLIN',        ro:148, disc:354,  rap:1.26, elr:149, alignPct:14.0, alignCnt:14, tirePct:48.0, tireCnt:48, valvPct:17.0, valvCnt:17, email:92.6, vidSent:0.0,  vidViewed:0.0,  onlinePay:5.0, openRo:32},
-  { store:'Indy Hyundai',         key:'indy',    name:'Benjamin Cucio',       ro:191, disc:40,   rap:0.97, elr:117, alignPct:4.3,  alignCnt:3,  tirePct:37.7, tireCnt:26, valvPct:21.7, valvCnt:15, email:94.8, vidSent:0.0,  vidViewed:0.0,  onlinePay:4.4, openRo:30},
-  { store:'Indy Hyundai',         key:'indy',    name:'NOAH WEAVER',          ro:68,  disc:39,   rap:0.91, elr:134, alignPct:10.0, alignCnt:4,  tirePct:20.0, tireCnt:8,  valvPct:10.0, valvCnt:4,  email:89.6, vidSent:0.0,  vidViewed:0.0,  onlinePay:0.0, openRo:50},
+  { store:'Bob Rohrman Hyundai',  key:'hyundai', name:'NEVEN CHASTEEN',       ro:118, disc:175,  rap:1.69, elr:157, alignPct:5.7,  alignCnt:3,  tirePct:7.5,  tireCnt:4,  valvPct:18.9, valvCnt:10, email:89.2, vidSent:59.1, vidViewed:7.7,  onlinePay:6.8, openRo:9},
+  { store:'Indy Hyundai',         key:'indy',    name:'ERICK CONKLIN',        ro:148, disc:354,  rap:1.26, elr:149, alignPct:14.0, alignCnt:14, tirePct:48.0, tireCnt:48, valvPct:17.0, valvCnt:17, email:92.6, vidSent:0.0,  vidViewed:0.0,  onlinePay:5.0, openRo:31},
+  { store:'Indy Hyundai',         key:'indy',    name:'Benjamin Cucio',       ro:191, disc:40,   rap:0.97, elr:117, alignPct:4.3,  alignCnt:3,  tirePct:37.7, tireCnt:26, valvPct:21.7, valvCnt:15, email:94.8, vidSent:0.0,  vidViewed:0.0,  onlinePay:4.4, openRo:29},
+  { store:'Indy Hyundai',         key:'indy',    name:'NOAH WEAVER',          ro:68,  disc:39,   rap:0.91, elr:134, alignPct:10.0, alignCnt:4,  tirePct:20.0, tireCnt:8,  valvPct:10.0, valvCnt:4,  email:89.6, vidSent:0.0,  vidViewed:0.0,  onlinePay:0.0, openRo:46},
 ];
 
 const SA_B = { ro:170, rap:1.5, align:10, tire:15, valv:23, email:90, vidSent:75, vidViewed:25 };
@@ -1371,7 +2127,7 @@ function saPlain(val, fmt, extraClass='') {
   return `<td class="num ${extraClass}"><span class="v-neu">${(val!==null&&val!==undefined&&(val!==0||fmt===saP))?fmt(val):'—'}</span></td>`;
 }
 function saCnt(val, extraClass='') {
-  return `<td class="num ${extraClass}" style="color:var(--muted);font-size:11px">${val>0?val:'—'}</td>`;
+  return `<td class="num ${extraClass}" style="color:#555;font-size:11px">${val>0?val:'—'}</td>`;
 }
 function saRoCell(ro) {
   const ok = ro >= SA_B.ro;
@@ -1387,21 +2143,17 @@ let saFilter = 'all';
 
 function saRenderTable() {
   const tbody = document.getElementById('sa-tbody');
-  const active = getActiveAdvisors();
-  const stores = [...new Set(active.map(a=>a.store))];
+  const stores = [...new Set(saAdvisors.map(a=>a.store))];
   let html = '';
   stores.forEach(store => {
-    const rows = active.filter(a=>a.store===store);
-    if(rows.length === 0) return;
+    const rows = saAdvisors.filter(a=>a.store===store);
     if(saFilter!=='all' && !rows[0].key.includes(saFilter)) return;
-    html += `<tr class="store-hdr"><td colspan="19">${store}</td></tr>`;
+    html += `<tr class="store-hdr"><td colspan="17">${store}</td></tr>`;
     rows.forEach(a => {
       html += `<tr>
         <td class="left"><span class="adv-name">${a.name}</span></td>
         ${saRoCell(a.ro)}
         <td class="num" style="color:${(a.openRo||0)>0?'var(--text2)':'var(--muted)'}">${a.openRo??'—'}</td>
-        <td class="num" style="color:var(--text2)">${a.cpHrs!==null&&a.cpHrs!==undefined?a.cpHrs.toFixed(1):'—'}</td>
-        <td class="num" style="color:var(--text2)">${a.warrHrs!==null&&a.warrHrs!==undefined?a.warrHrs.toFixed(1):'—'}</td>
         ${saCell(a.rap,       SA_B.rap,      saDec)}
         ${saPlain(a.disc,     saDlr)}
         ${saPlain(a.elr>0?a.elr:null, v=>'$'+Math.round(v))}
@@ -1424,8 +2176,6 @@ function saRenderTable() {
       <td>Store Avg / Total</td>
       <td class="num">${sum('ro')} ROs</td>
       <td class="num">${sum('openRo')} open</td>
-      <td class="num">${sum('cpHrs').toFixed(1)}</td>
-      <td class="num">${sum('warrHrs').toFixed(1)}</td>
       <td class="num">${avg('rap').toFixed(2)}</td>
       <td class="num">$${sum('disc').toLocaleString()}</td>
       <td class="num">$${Math.round(avg('elr'))}</td>
@@ -1449,65 +2199,58 @@ function filterStore(btn, key) {
 }
 
 // ══════════════════════════════════════════════════════
-// ADVISOR MANAGEMENT (select/deselect)
+// CSI MANAGEMENT
 // ══════════════════════════════════════════════════════
-function getExcludedAdvisors() {
-  try { return JSON.parse(localStorage.getItem('excludedAdvisors') || '[]'); } catch(e) { return []; }
-}
-function setExcludedAdvisors(list) {
-  localStorage.setItem('excludedAdvisors', JSON.stringify(list));
-}
-function isAdvisorActive(name) {
-  return !getExcludedAdvisors().includes(name.toUpperCase());
-}
-function getActiveAdvisors() {
-  return saAdvisors.filter(a => isAdvisorActive(a.name));
+const CSI_KEY = 'rohrman_csi_v1';
+
+function loadCSI() {
+  try {
+    const saved = localStorage.getItem(CSI_KEY);
+    if (saved) {
+      const data = JSON.parse(saved);
+      saAdvisors.forEach(a => {
+        a.csi = data[a.name] === true;
+      });
+    }
+  } catch(e) {}
 }
 
-function toggleAdvisorMgr() {
-  const panel = document.getElementById('advisor-mgr-panel');
-  const open = panel.style.display === 'none';
-  panel.style.display = open ? 'block' : 'none';
-  if (open) buildAdvisorMgrGrid();
+function saveCSI() {
+  const data = {};
+  saAdvisors.forEach(a => { data[a.name] = a.csi; });
+  try { localStorage.setItem(CSI_KEY, JSON.stringify(data)); } catch(e) {}
 }
 
-function buildAdvisorMgrGrid() {
-  const grid = document.getElementById('advisor-mgr-grid');
-  const excluded = getExcludedAdvisors();
-  const stores = [...new Set(saAdvisors.map(a => a.store))];
-  let html = '';
-  stores.forEach(store => {
-    const advisors = saAdvisors.filter(a => a.store === store);
-    html += '<div style="margin-bottom:8px">';
-    html += '<div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:4px;padding:4px 0;border-bottom:1px solid var(--border)">' + store + '</div>';
-    advisors.forEach(a => {
-      const checked = !excluded.includes(a.name.toUpperCase());
-      html += '<label style="display:flex;align-items:center;gap:8px;padding:3px 0;cursor:pointer;font-size:12px;color:' + (checked ? 'var(--text)' : 'var(--muted)') + '">';
-      html += '<input type="checkbox" class="adv-mgr-cb" data-name="' + a.name.toUpperCase() + '" ' + (checked ? 'checked' : '') + ' style="width:16px;height:16px;cursor:pointer">';
-      html += '<span>' + a.name + '</span>';
-      html += '</label>';
-    });
-    html += '</div>';
+function buildCSIGrid() {
+  const grid = document.getElementById('csi-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  saAdvisors.forEach((a, i) => {
+    const div = document.createElement('div');
+    div.className = 'csi-item' + (a.csi ? ' csi-on' : '');
+    div.innerHTML = `
+      <div class="csi-check">\${a.csi ? '✓' : ''}</div>
+      <div>
+        <div class="csi-name">\${a.name}</div>
+        <div class="csi-store">\${a.store}</div>
+      </div>`;
+    div.onclick = function() {
+      a.csi = !a.csi;
+      div.className = 'csi-item' + (a.csi ? ' csi-on' : '');
+      div.querySelector('.csi-check').textContent = a.csi ? '✓' : '';
+      saveCSI();
+      renderLeaderboard();
+      saRenderTable();
+    };
+    grid.appendChild(div);
   });
-  grid.innerHTML = html;
 }
 
-function advisorMgrSelectAll(checked) {
-  document.querySelectorAll('.adv-mgr-cb').forEach(cb => { cb.checked = checked; });
-}
-
-function saveAdvisorSelections() {
-  const excluded = [];
-  document.querySelectorAll('.adv-mgr-cb').forEach(cb => {
-    if (!cb.checked) excluded.push(cb.dataset.name);
-  });
-  setExcludedAdvisors(excluded);
-  const total = saAdvisors.length;
-  const active = total - excluded.length;
-  saRenderTable();
-  renderLeaderboard();
-  document.getElementById('advisor-mgr-panel').style.display = 'none';
-  upLog('Advisors: ' + active + ' of ' + total + ' active (' + excluded.length + ' hidden)', 'ok');
+function toggleCSIPanel() {
+  const p = document.getElementById('csi-panel');
+  const open = p.style.display === 'none';
+  p.style.display = open ? 'block' : 'none';
+  document.getElementById('csi-toggle-icon').textContent = open ? 'COLLAPSE ▲' : 'EXPAND ▼';
 }
 
 // ══════════════════════════════════════════════════════
@@ -1516,21 +2259,12 @@ function saveAdvisorSelections() {
 // ══════════════════════════════════════════════════════
 // LEADERBOARD
 // ══════════════════════════════════════════════════════
-function getLbAdvisors() {
-  return getActiveAdvisors().map(a => ({
-    ...a,
-    combined: a.alignCnt + a.tireCnt + a.valvCnt
-  })).filter(a => a.combined > 0 || a.alignCnt > 0 || a.tireCnt > 0 || a.valvCnt > 0);
-}
+const lbAdvisors = saAdvisors.map(a => ({
+  ...a,
+  combined: a.alignCnt + a.tireCnt + a.valvCnt
+})).filter(a => a.combined > 0 || a.alignCnt > 0 || a.tireCnt > 0 || a.valvCnt > 0);
 
-const storeLogo = {
-  'Bob Rohrman Honda':   '<img src="data:image/png;base64,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" style="height:24px;vertical-align:middle" alt="Honda">',
-  'Bob Rohrman Toyota':  '<img src="data:image/png;base64,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" style="height:24px;vertical-align:middle" alt="Toyota">',
-  'Bob Rohrman Kia':     '<img src="data:image/png;base64,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" style="height:14px;vertical-align:middle" alt="Kia">',
-  'Bob Rohrman Hyundai': '<img src="data:image/png;base64,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" style="height:24px;vertical-align:middle" alt="Hyundai">',
-  'Indy Hyundai':        '<img src="data:image/png;base64,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" style="height:24px;vertical-align:middle" alt="Hyundai"> <span style="font-size:8px;color:var(--muted);font-weight:600">INDY</span>',
-};
-const storeShortText = {
+const storeShort = {
   'Bob Rohrman Honda':   'Honda',
   'Bob Rohrman Toyota':  'Toyota',
   'Bob Rohrman Kia':     'Kia',
@@ -1539,16 +2273,26 @@ const storeShortText = {
 };
 
 const storeColor = {
-  honda:    '#003366',
-  toyota:   '#cc0000',
-  kia:      '#111111',
-  hyundai:  '#002c5f',
-  indy:     '#002c5f',
+  honda:    '#cc2222',
+  toyota:   '#c8820a',
+  kia:      '#2563eb',
+  hyundai:  '#0891b2',
+  indy:     '#7c3aed',
 };
 
 let lbMode = 'combined';
 
 function lbSortKey(a) {
+  const csiBonus = a.csi ? 1.10 : 1.00;
+  if (lbMode === 'align') return +(a.alignCnt * csiBonus).toFixed(2);
+  if (lbMode === 'tire')  return +(a.tireCnt  * csiBonus).toFixed(2);
+  if (lbMode === 'valv')  return +(a.valvCnt  * csiBonus).toFixed(2);
+  return +(a.combined * csiBonus).toFixed(2);
+}
+
+function lbDisplay(a) {
+  // Raw count for display, score for sorting
+  const csiBonus = a.csi ? 1.10 : 1.00;
   if (lbMode === 'align') return a.alignCnt;
   if (lbMode === 'tire')  return a.tireCnt;
   if (lbMode === 'valv')  return a.valvCnt;
@@ -1560,54 +2304,16 @@ const podiumHeights = [130, 100, 80];
 const podiumColors  = ['#1e293b','#475569','#64748b'];
 
 function renderLeaderboard() {
-  const lbAdvisors = getLbAdvisors();
-  
-  // ── POWER SCORE CALCULATION ──
-  // Percentile-based composite score (0-100)
-  // CP Hrs 20% · Open ROs 15% (inv) · Warr Hrs 15% · ROs 10% · Hrs/RO 10% · Menu 10% · Valv 8% · Align 6% · Tires 6%
-  const weights = { cpHrs:0.20, openRo:0.15, warrHrs:0.15, ro:0.10, rap:0.10, combined:0.10, valvPct:0.08, alignPct:0.06, tirePct:0.06 };
-  const INVERSE_METRICS = ['openRo']; // lower is better
-  const metrics = Object.keys(weights);
-  
-  // Compute percentile rank for each metric
-  function percentileRank(arr, val) {
-    if (arr.length <= 1) return 100;
-    const below = arr.filter(v => v < val).length;
-    return (below / (arr.length - 1)) * 100;
-  }
-  
-  let metricArrays = {};
-  metrics.forEach(m => {
-    metricArrays[m] = lbAdvisors.map(a => m === 'combined' ? a.combined : (a[m] || 0));
-  });
-  
-  lbAdvisors.forEach(a => {
-    let score = 0;
-    metrics.forEach(m => {
-      const val = m === 'combined' ? a.combined : (a[m] || 0);
-      let pct = percentileRank(metricArrays[m], val);
-      // Invert for metrics where lower is better
-      if (INVERSE_METRICS.includes(m)) pct = 100 - pct;
-      score += pct * weights[m];
-    });
-    a.powerScore = Math.round(score);
-  });
-  
-  // Sort by Power Score (or filtered mode)
-  let sorted;
-  if (lbMode === 'power' || lbMode === 'combined') {
-    sorted = [...lbAdvisors].sort((a,b) => b.powerScore - a.powerScore);
-  } else {
-    sorted = [...lbAdvisors].sort((a,b) => lbSortKey(b) - lbSortKey(a));
-  }
+  const sorted = [...lbAdvisors].sort((a,b) => lbSortKey(b) - lbSortKey(a));
 
   // Update table header
-  const labels = { combined:'Advisor Power Rankings', power:'Advisor Power Rankings', align:'Alignment Count', tire:'Tire Count', valv:'Valvoline Count' };
-  const lbHeader = document.getElementById('lb-table-header'); if (lbHeader) lbHeader.textContent = 'All Advisors · ' + labels[lbMode];
+  const labels = { combined:'Combined Service Menu Count', align:'Alignment Count', tire:'Tire Count', valv:'Valvoline Count' };
+  const lbHeader = document.getElementById('lb-table-header'); if (lbHeader) if (lbHeader) lbHeader.textContent = 'Full Rankings · ' + labels[lbMode];
 
   // Podium — top 3
   const podium = document.getElementById('lb-podium');
   const top3 = sorted.slice(0,3);
+  // Reorder for visual: 2nd | 1st | 3rd
   const order = top3.length >= 3 ? [top3[1], top3[0], top3[2]] : top3.length === 2 ? [top3[1], top3[0]] : top3;
   const orderRanks = top3.length >= 3 ? [2,1,3] : top3.length === 2 ? [2,1] : [1];
 
@@ -1615,52 +2321,45 @@ function renderLeaderboard() {
   order.forEach((a, oi) => {
     if (!a) return;
     const rank = orderRanks[oi];
+    const val  = lbSortKey(a);
     const h    = podiumHeights[rank-1];
     const mc   = podiumColors[rank-1];
     const sc   = storeColor[a.key] || '#64748b';
-    const displayVal = (lbMode === 'combined' || lbMode === 'power') ? a.powerScore : lbSortKey(a);
-    const displayLabel = (lbMode === 'combined' || lbMode === 'power') ? 'power score' : lbMode==='align'?'alignments':lbMode==='tire'?'tires':'valvoline';
     podium.innerHTML += `
       <div style="display:flex;flex-direction:column;align-items:center;gap:0;flex:1;max-width:180px">
         <div style="font-size:${rank===1?'28px':'22px'}">${medals[rank-1]}</div>
         <div style="font-weight:700;font-size:${rank===1?'13px':'12px'};text-align:center;margin:6px 0 2px;color:var(--text)">${a.name}</div>
-        <div style="font-size:10px;font-weight:500;margin-bottom:8px">${storeLogo[a.store]||a.store}</div>
-        <div style="font-family:'DM Mono',monospace;font-size:${rank===1?'32px':'24px'};font-weight:700;color:${mc};line-height:1">${displayVal}</div>
-        <div style="font-size:9px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px">${displayLabel}</div>
+        <div style="font-size:10px;color:#555;font-weight:500;margin-bottom:8px">${storeShort[a.store]||a.store}</div>
+        <div style="font-family:'DM Mono',monospace;font-size:${rank===1?'32px':'24px'};font-weight:700;color:${mc};line-height:1">${val}</div>
+        <div style="font-size:9px;color:#555;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px">${lbMode==='combined'?'combined':lbMode==='align'?'alignments':lbMode==='tire'?'tires':'valvoline'}</div>
         <div style="width:100%;height:${h}px;background:${mc}22;border:2px solid ${mc};border-bottom:none;border-radius:6px 6px 0 0;display:flex;align-items:flex-start;justify-content:center;padding-top:8px">
           <span style="font-size:${rank===1?'20px':'16px'};font-weight:800;color:${mc}">#${rank}</span>
         </div>
       </div>`;
   });
 
-  // Full table — top 10 only
+  // Full table
   const tbody = document.getElementById('lb-tbody');
   tbody.innerHTML = '';
-  const top15 = sorted;
-  top15.forEach((a, idx) => {
+  sorted.forEach((a, idx) => {
     const rank = idx + 1;
+    const val  = lbSortKey(a);
     const isTop3 = rank <= 3;
-    const rankDisplay = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : '#' + rank;
+    const rankDisplay = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`;
     const sc = storeColor[a.key] || '#64748b';
     const rowBg = rank === 1 ? 'background:#fffbeb' : rank === 2 ? 'background:#f8fafc' : rank === 3 ? 'background:#fdf8f3' : '';
-    const cpH = (a.cpHrs || 0) > 0 ? a.cpHrs.toFixed(1) : '—';
-    const wH = (a.warrHrs || 0) > 0 ? a.warrHrs.toFixed(1) : '—';
-    const psColor = a.powerScore >= 75 ? 'var(--green)' : a.powerScore >= 50 ? 'var(--text)' : 'var(--red)';
 
     tbody.innerHTML += `<tr style="${rowBg}">
       <td style="text-align:center;font-size:${isTop3?'16px':'12px'};font-weight:700;color:var(--text2)">${rankDisplay}</td>
-      <td style="text-align:left"><span style="font-weight:600;color:var(--text)">${a.name}</span></td>
-      <td style="text-align:center;padding:4px 6px">${storeLogo[a.store]||a.store}</td>
-      <td style="text-align:center;font-weight:800;font-size:14px;color:${psColor};background:#1e293b0a;border-radius:4px">${a.powerScore}</td>
-      <td style="text-align:center;font-weight:600">${a.ro}</td>
-      <td style="text-align:center;font-weight:700;color:${(a.openRo||0)>20?'var(--red)':(a.openRo||0)>10?'var(--text)':'var(--green)'}">${a.openRo||0}</td>
-      <td style="text-align:center;font-weight:600">${cpH}</td>
-      <td style="text-align:center;font-weight:600">${wH}</td>
-      <td style="text-align:center;font-weight:600">${a.rap.toFixed(2)}</td>
-      <td style="text-align:center"><strong style="font-size:14px;color:${isTop3?podiumColors[rank-1]:'var(--text)'}">${a.combined}</strong></td>
-      <td style="text-align:center"><span style="font-weight:600;color:var(--green)">${a.alignCnt}</span> <span style="color:var(--muted);font-size:10px">/ ${a.alignPct.toFixed(1)}%</span></td>
-      <td style="text-align:center"><span style="font-weight:600;color:var(--accent)">${a.tireCnt}</span> <span style="color:var(--muted);font-size:10px">/ ${a.tirePct.toFixed(1)}%</span></td>
-      <td style="text-align:center"><span style="font-weight:600;color:#7c3aed">${a.valvCnt}</span> <span style="color:var(--muted);font-size:10px">/ ${a.valvPct.toFixed(1)}%</span></td>
+      <td class="left"><span style="font-weight:600;color:var(--text)">${a.name}</span>${a.csi ? '<span class="csi-badge">CSI ✓</span>' : ''}</td>
+      <td class="num"><span style="font-size:10px;font-weight:600;color:${sc};background:${sc}15;padding:2px 8px;border-radius:4px">${storeShort[a.store]||a.store}</span></td>
+      <td class="num"><strong style="font-size:14px;color:${isTop3?podiumColors[rank-1]:'var(--text)'}">${a.combined}</strong></td>
+      <td class="num" style="color:var(--green);font-weight:${a.alignCnt===Math.max(...sorted.map(x=>x.alignCnt))?'700':'400'}">${a.alignCnt}</td>
+      <td class="num" style="color:var(--accent);font-weight:${a.tireCnt===Math.max(...sorted.map(x=>x.tireCnt))?'700':'400'}">${a.tireCnt}</td>
+      <td class="num" style="color:#7c3aed;font-weight:${a.valvCnt===Math.max(...sorted.map(x=>x.valvCnt))?'700':'400'}">${a.valvCnt}</td>
+      <td class="num" style="color:#555">${a.alignPct.toFixed(1)}%</td>
+      <td class="num" style="color:#555">${a.tirePct.toFixed(1)}%</td>
+      <td class="num" style="color:#555">${a.valvPct.toFixed(1)}%</td>
     </tr>`;
   });
 }
@@ -1685,7 +2384,6 @@ function buildPursuitEntry() {
       <td style="padding:6px 6px"><input style="${inStyle}" id="pt_pts_${i}"    type="number" value="${s.points}"></td>
       <td style="padding:6px 6px"><input style="${inStyle}" id="pt_gp_${i}"     type="number" step="0.1" value="${s.gpPct}"></td>
       <td style="padding:6px 6px"><input style="${inStyle}" id="pt_tyoy_${i}"   type="number" step="0.1" value="${s.totalYoy}"></td>
-      <td style="padding:6px 6px"><input style="${inStyle}" id="pt_croyoy_${i}" type="number" step="0.1" value="${s.cpRoYoy}"></td>
       <td style="padding:6px 6px"><input style="${inStyle}" id="pt_cyoy_${i}"   type="number" step="0.1" value="${s.cpYoy}"></td>
       <td style="padding:6px 6px"><input style="${inStyle}" id="pt_align_${i}"  type="number" step="0.1" value="${s.align}"></td>
       <td style="padding:6px 6px"><input style="${inStyle}" id="pt_valv_${i}"   type="number" step="0.1" value="${s.valv}"></td>
@@ -1705,16 +2403,15 @@ function togglePursuit() {
 
 function applyPursuit() {
   pursuitStores.forEach((s, i) => {
-    s.points   = parseFloat(document.getElementById('pt_pts_' + i).value)    || s.points;
-    s.gpPct    = parseFloat(document.getElementById('pt_gp_' + i).value)     || s.gpPct;
-    s.totalYoy = parseFloat(document.getElementById('pt_tyoy_' + i).value)   ?? s.totalYoy;
-    s.cpRoYoy  = parseFloat(document.getElementById('pt_croyoy_' + i).value) ?? s.cpRoYoy;
-    s.cpYoy    = parseFloat(document.getElementById('pt_cyoy_' + i).value)   ?? s.cpYoy;
-    s.align    = parseFloat(document.getElementById('pt_align_' + i).value)  || s.align;
-    s.valv     = parseFloat(document.getElementById('pt_valv_' + i).value)   || s.valv;
-    s.tires    = parseFloat(document.getElementById('pt_tires_' + i).value)  || s.tires;
-    s.policy   = parseFloat(document.getElementById('pt_pol_' + i).value)    ?? s.policy;
-    s.opProfit = parseFloat(document.getElementById('pt_op_' + i).value)     ?? s.opProfit;
+    s.points   = parseFloat(document.getElementById(`pt_pts_${i}`).value)  || s.points;
+    s.gpPct    = parseFloat(document.getElementById(`pt_gp_${i}`).value)   || s.gpPct;
+    s.totalYoy = parseFloat(document.getElementById(`pt_tyoy_${i}`).value) ?? s.totalYoy;
+    s.cpYoy    = parseFloat(document.getElementById(`pt_cyoy_${i}`).value) ?? s.cpYoy;
+    s.align    = parseFloat(document.getElementById(`pt_align_${i}`).value)|| s.align;
+    s.valv     = parseFloat(document.getElementById(`pt_valv_${i}`).value) || s.valv;
+    s.tires    = parseFloat(document.getElementById(`pt_tires_${i}`).value)|| s.tires;
+    s.policy   = parseFloat(document.getElementById(`pt_pol_${i}`).value)  ?? s.policy;
+    s.opProfit = parseFloat(document.getElementById(`pt_op_${i}`).value)   ?? s.opProfit;
   });
   renderPursuit();
   document.getElementById('pursuit-entry-panel').style.display = 'none';
@@ -1724,61 +2421,13 @@ function applyPursuit() {
 // ══════════════════════════════════════════════════════
 // INIT — run after full page load so all DOM elements exist
 // ══════════════════════════════════════════════════════
-// ══════════════════════════════════════════════════════
-// PRINT INDIVIDUAL TABS
-// ══════════════════════════════════════════════════════
-function printTab() {
-  // Accept one or more tab IDs: printTab('advisors') or printTab('pursuit','gppace')
-  const tabIds = Array.from(arguments);
-  const allPanels = document.querySelectorAll('.tab-panel');
-  
-  // Mark panels to print
-  allPanels.forEach(p => {
-    const id = p.id.replace('tab-', '');
-    if (tabIds.includes(id)) {
-      p.setAttribute('data-print-show', 'true');
-    } else {
-      p.setAttribute('data-print-show', 'false');
-    }
-  });
-  
-  document.body.classList.add('single-tab-print');
-  window.print();
-  document.body.classList.remove('single-tab-print');
-  allPanels.forEach(p => p.removeAttribute('data-print-show'));
-}
-
 function initDashboard() {
-  // ── DYNAMIC DATES ──
-  // Data is always as of end of previous business day
-  const today = new Date();
-  const yesterday = new Date(today);
-  yesterday.setDate(today.getDate() - 1);
-  // Skip weekends: if yesterday is Sunday go to Friday, if Saturday go to Friday
-  const dow = yesterday.getDay();
-  if (dow === 0) yesterday.setDate(yesterday.getDate() - 2); // Sun → Fri
-  if (dow === 6) yesterday.setDate(yesterday.getDate() - 1); // Sat → Fri
-  
-  const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  const mm = String(yesterday.getMonth() + 1).padStart(2, '0');
-  const dd = String(yesterday.getDate()).padStart(2, '0');
-  const yy = String(yesterday.getFullYear()).slice(-2);
-  const monthName = months[yesterday.getMonth()];
-  const year = yesterday.getFullYear();
-  
-  const dataAsOf = 'Data as of EOB ' + mm + '/' + dd + '/' + yy;
-  const periodRange = mm + '/01 – ' + mm + '/' + dd + '/' + yy;
-  const monthMtd = monthName + ' ' + year + ' MTD';
-  
-  document.querySelectorAll('.data-date-badge').forEach(el => { el.textContent = dataAsOf; });
-  document.querySelectorAll('.data-period-range').forEach(el => { el.textContent = periodRange; });
-  document.querySelectorAll('.data-month-mtd').forEach(el => { el.textContent = monthMtd; });
-
   // Temporarily show all panels so getElementById works, then hide them
   document.querySelectorAll('.tab-panel').forEach(p => {
     p.style.display = 'block';
   });
 
+  loadCSI();
   renderPursuit();
   buildPursuitEntry();
   buildEntryTable();
@@ -1839,7 +2488,8 @@ function upHandle(file, type) {
 window.dzDrag  = function(e,id){ e.preventDefault(); var el=document.getElementById(id); if(el) el.classList.add('drag-over'); };
 window.dzLeave = function(id){ var el=document.getElementById(id); if(el) el.classList.remove('drag-over'); };
 window.dzDrop  = function(e,type){ e.preventDefault(); var id='dz-'+(type==='gp'?'gp':type==='sa'?'sa':type==='email'?'email':type==='wip'?'wip':type==='pursuit'?'pursuit':'tech'); window.dzLeave(id); var f=e.dataTransfer.files[0]; if(f) parseFile(f,type); };
-window.switchTab    = switchTab;
+window.switchTab     = switchTab;
+window.toggleCSIPanel = toggleCSIPanel;
 window.setCC        = setCC;
 window.filterStore  = filterStore;
 window.lbFilter     = lbFilter;
@@ -1847,10 +2497,6 @@ window.toggleEntry  = toggleEntry;
 window.applyEntries = applyEntries;
 window.togglePursuit = togglePursuit;
 window.applyPursuit  = applyPursuit;
-window.toggleAdvisorMgr    = toggleAdvisorMgr;
-window.printTab            = printTab;
-window.advisorMgrSelectAll = advisorMgrSelectAll;
-window.saveAdvisorSelections = saveAdvisorSelections;
 
 window.addEventListener('DOMContentLoaded', initDashboard);
 </script>
@@ -1859,17 +2505,29 @@ window.addEventListener('DOMContentLoaded', initDashboard);
 <div class="tab-panel" id="tab-leaderboard">
   <div class="panel-header">
     <div>
-      <div class="panel-title">Advisor of the Month Leaderboard</div>
-      <div class="panel-sub">CP Hrs 20% · Open ROs 15% · Warr Hrs 15% · ROs 10% · Hrs/RO 10% · Menu 10% · Valvoline 8% · Align 6% · Tires 6%</div>
+      <div class="panel-title">Service Menu Leaderboard</div>
+      <div class="panel-sub">Alignment + Tires + Valvoline combined count · March 2026 MTD</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center">
-      <div class="period-badge data-date-badge"></div>
+      <div class="period-badge">03/01 – 03/23/26</div>
+    </div>
+  </div>
+
+  <!-- CSI Management -->
+  <div class="summary-card" style="margin-bottom:16px">
+    <div class="summary-card-header" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="toggleCSIPanel()">
+      <span>✅ CSI Status — Check advisors hitting CSI goal <span style="color:#555;font-weight:400">(+10% leaderboard bonus)</span></span>
+      <span id="csi-toggle-icon" style="color:var(--accent);font-size:10px;font-weight:700">EXPAND ▼</span>
+    </div>
+    <div id="csi-panel" style="display:none;padding:16px">
+      <div class="csi-grid" id="csi-grid"></div>
+      <div style="font-size:11px;color:#555;margin-top:4px">Selections auto-saved in your browser. Advisors with CSI ✓ receive a 10% score bonus in the leaderboard.</div>
     </div>
   </div>
 
   <!-- Category toggles -->
   <div class="cost-center-nav" id="lb-filters">
-    <button class="cc-btn active" onclick="lbFilter(this,'combined')">⚡ Power Score</button>
+    <button class="cc-btn active" onclick="lbFilter(this,'combined')">🏆 Combined</button>
     <button class="cc-btn" onclick="lbFilter(this,'align')">Alignment</button>
     <button class="cc-btn" onclick="lbFilter(this,'tire')">Tires</button>
     <button class="cc-btn" onclick="lbFilter(this,'valv')">Valvoline</button>
@@ -1880,24 +2538,21 @@ window.addEventListener('DOMContentLoaded', initDashboard);
 
   <!-- Full rankings table -->
   <div class="summary-card">
-    <div class="summary-card-header" id="lb-table-header">All Advisors · Advisor Power Rankings</div>
+    <div class="summary-card-header" id="lb-table-header">Full Rankings · Combined Service Menu Count</div>
     <div class="table-scroll">
-      <table style="text-align:center">
+      <table>
         <thead>
           <tr class="group-row">
             <th style="width:44px;text-align:center">Rank</th>
-            <th style="text-align:left">Advisor</th>
+            <th class="left">Advisor</th>
             <th>Store</th>
-            <th style="background:#1e293b;color:#fff;border-radius:4px">Power<br>Score</th>
-            <th>ROs</th>
-            <th style="color:var(--red)">Open<br>ROs</th>
-            <th>CP<br>Hrs</th>
-            <th>Warr<br>Hrs</th>
-            <th>Hrs/RO</th>
             <th>Combined</th>
             <th>Alignment</th>
             <th>Tires</th>
             <th>Valvoline</th>
+            <th>Align %</th>
+            <th>Tire %</th>
+            <th>Valv %</th>
           </tr>
         </thead>
         <tbody id="lb-tbody"></tbody>
@@ -1988,15 +2643,6 @@ window.addEventListener('DOMContentLoaded', initDashboard);
       <label class="up-label" for="up-tech">Choose File</label>
       <input class="up-input" type="file" id="up-tech" accept=".xlsx,.xls" onchange="upHandle(this.files[0],'tech')">
       <div class="up-status" id="up-tech-status"></div>
-    </div>
-
-    <div class="up-card">
-      <div class="up-icon">📋</div>
-      <div class="up-title">WIP Advisor Detail</div>
-      <div class="up-hint">Select all 5 store files at once</div>
-      <label class="up-label" for="up-wipdetail">Choose Files</label>
-      <input class="up-input" type="file" id="up-wipdetail" accept=".xlsx,.xls" multiple onchange="parseWIPDetail(this.files)">
-      <div class="up-status" id="up-wipdetail-status"></div>
     </div>
 
   </div>
