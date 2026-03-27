@@ -193,6 +193,7 @@ function parseSA(wb, filename) {
     filtered.forEach(a => saAdvisors.push(a));
     saRenderTable();
     renderLeaderboard();
+    renderRankBoard();
     upStatus('sa', `✓ Loaded ${filtered.length} advisors`, 'ok');
     upLog(`SA Totals: loaded ${filtered.length} advisors from ${filename}`, 'ok');
   } else {
@@ -496,6 +497,7 @@ function parseWIPDetail(fileList) {
         });
         saRenderTable();
         renderLeaderboard();
+        renderRankBoard();
         const statusEl = document.getElementById('up-wipdetail-status');
         if (statusEl) { statusEl.textContent = '✓ Updated ' + updated + ' advisors'; statusEl.style.color = '#0f9b58'; }
         upLog('WIP Detail: updated open ROs for ' + updated + ' advisors from ' + fileList.length + ' files', 'ok');
@@ -860,6 +862,13 @@ window.parseFile = parseFile;
     #tab-leaderboard tbody td { padding: 4px 3px !important; white-space: nowrap !important; }
     #lb-podium { min-height: 100px !important; margin-bottom: 8px !important; }
 
+    /* ═══ PAGE 5: Rank Board — landscape ═══ */
+    #tab-rankboard { page-break-before: always; }
+    #tab-rankboard table { font-size: 9px !important; table-layout: auto !important; width: 100% !important; }
+    #tab-rankboard thead th { padding: 4px 3px !important; font-size: 8px !important; white-space: nowrap !important; }
+    #tab-rankboard tbody td { padding: 4px 3px !important; white-space: nowrap !important; }
+    #rb-podium { min-height: 100px !important; margin-bottom: 8px !important; }
+
     /* ═══ SINGLE TAB PRINT MODE ═══ */
     body.single-tab-print .tab-panel[data-print-show="false"] { display: none !important; }
     body.single-tab-print .tab-panel[data-print-show="true"] { display: block !important; page-break-before: auto !important; page-break-after: auto !important; }
@@ -919,6 +928,9 @@ window.parseFile = parseFile;
     <button class="tab-btn" onclick="switchTab('leaderboard', this)">
       <span class="tab-icon">🏆</span> Leaderboard
     </button>
+    <button class="tab-btn" onclick="switchTab('rankboard', this)">
+      <span class="tab-icon">📊</span> Rank Board
+    </button>
     <button class="tab-btn" onclick="switchTab('upload', this)">
       <span class="tab-icon">📂</span> Upload Data
     </button>
@@ -930,6 +942,7 @@ window.parseFile = parseFile;
     <button onclick="printTab('gppace')" style="background:#475569;color:#fff;border:none;border-radius:5px;padding:5px 14px;font-size:11px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">🖨 GP Pace</button>
     <button onclick="printTab('advisors')" style="background:#475569;color:#fff;border:none;border-radius:5px;padding:5px 14px;font-size:11px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">🖨 Scorecard</button>
     <button onclick="printTab('leaderboard')" style="background:#475569;color:#fff;border:none;border-radius:5px;padding:5px 14px;font-size:11px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">🖨 Leaderboard</button>
+    <button onclick="printTab('rankboard')" style="background:#475569;color:#fff;border:none;border-radius:5px;padding:5px 14px;font-size:11px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">🖨 Rank Board</button>
   </div>
 </div>
 
@@ -1579,6 +1592,7 @@ function toggleCsi(name) {
   if (idx >= 0) list.splice(idx, 1); else list.push(key);
   localStorage.setItem('csiAdvisors', JSON.stringify(list));
   renderLeaderboard();
+  renderRankBoard();
 }
 function isAdvisorActive(name) {
   return !getExcludedAdvisors().includes(name.toUpperCase());
@@ -1629,6 +1643,7 @@ function saveAdvisorSelections() {
   const active = total - excluded.length;
   saRenderTable();
   renderLeaderboard();
+  renderRankBoard();
   document.getElementById('advisor-mgr-panel').style.display = 'none';
   upLog('Advisors: ' + active + ' of ' + total + ' active (' + excluded.length + ' hidden)', 'ok');
 }
@@ -1809,6 +1824,151 @@ function lbFilter(btn, mode) {
 }
 
 // ══════════════════════════════════════════════════════
+// RANK BOARD (rank-points system)
+// ══════════════════════════════════════════════════════
+function renderRankBoard() {
+  const advisors = getActiveAdvisors();
+  if (!advisors || advisors.length === 0) return;
+  const N = advisors.length;
+
+  // Assign rank points with TIE HANDLING: tied values get average of their ranks
+  function assignRankPts(arr, key, inverse) {
+    const sorted = [...arr].sort((a, b) => {
+      const av = typeof a[key] === 'number' ? a[key] : 0;
+      const bv = typeof b[key] === 'number' ? b[key] : 0;
+      return inverse ? (av - bv) : (bv - av);
+    });
+    // Group ties and assign average rank points
+    let i = 0;
+    while (i < sorted.length) {
+      const val = typeof sorted[i][key] === 'number' ? sorted[i][key] : 0;
+      let j = i;
+      // Find all items with same value
+      while (j < sorted.length) {
+        const jv = typeof sorted[j][key] === 'number' ? sorted[j][key] : 0;
+        if (Math.abs(jv - val) > 0.001) break;
+        j++;
+      }
+      // i..j-1 are tied. They span ranks (N-i) down to (N-j+1). Average = (N-i + N-j+1)/2
+      const avgPts = ((N - i) + (N - j + 1)) / 2;
+      const rounded = Math.round(avgPts * 10) / 10; // keep 1 decimal for display
+      for (let k = i; k < j; k++) {
+        if (!sorted[k]._rp) sorted[k]._rp = {};
+        sorted[k]._rp[key] = rounded;
+      }
+      i = j;
+    }
+  }
+
+  // Reset rank points
+  advisors.forEach(a => { a._rp = {}; });
+
+  // Compute combined + total hours
+  advisors.forEach(a => {
+    a._totalHrs = (a.cpHrs || 0) + (a.warrHrs || 0);
+    a._combined = (a.alignCnt || 0) + (a.tireCnt || 0) + (a.valvCnt || 0);
+  });
+
+  // Assign rank points per metric
+  assignRankPts(advisors, 'ro', false);
+  assignRankPts(advisors, 'openRo', true);
+  assignRankPts(advisors, 'cpHrs', false);
+  assignRankPts(advisors, 'warrHrs', false);
+  assignRankPts(advisors, 'rap', false);
+  assignRankPts(advisors, '_combined', false);
+  assignRankPts(advisors, 'alignCnt', false);
+  assignRankPts(advisors, 'tireCnt', false);
+  assignRankPts(advisors, 'valvCnt', false);
+
+  // Sum rank points + CSI bonus
+  const csiList = getCsiAdvisors();
+  advisors.forEach(a => {
+    const rp = a._rp;
+    a._rankTotal = (rp.ro||0) + (rp.openRo||0) + (rp.cpHrs||0) + (rp.warrHrs||0) +
+                   (rp.rap||0) + (rp._combined||0) + (rp.alignCnt||0) + (rp.tireCnt||0) + (rp.valvCnt||0);
+    a._maxPossible = N * 9;
+    a.csiPass = csiList.includes(a.name.toUpperCase());
+    a._rankScore = a.csiPass ? Math.round(a._rankTotal * 1.10) : Math.round(a._rankTotal);
+  });
+
+  // Sort: rank score → CSI → total hrs → fewest open ROs → combined units
+  const sorted = [...advisors].sort((a, b) => {
+    if (b._rankScore !== a._rankScore) return b._rankScore - a._rankScore;
+    if (a.csiPass !== b.csiPass) return a.csiPass ? -1 : 1;
+    if (b._totalHrs !== a._totalHrs) return b._totalHrs - a._totalHrs;
+    if ((a.openRo||0) !== (b.openRo||0)) return (a.openRo||0) - (b.openRo||0);
+    return b._combined - a._combined;
+  });
+
+  // Podium
+  const podium = document.getElementById('rb-podium');
+  if (podium) {
+    const top3 = sorted.slice(0, 3);
+    const podColors = ['#FFD700', '#C0C0C0', '#CD7F32'];
+    const podH = [120, 100, 85];
+    const podOrder = [1, 0, 2];
+    podium.innerHTML = podOrder.map(i => {
+      if (!top3[i]) return '';
+      const a = top3[i];
+      const logo = storeLogo[a.store] || '';
+      return '<div style="text-align:center;width:140px">' +
+        '<div style="font-weight:700;font-size:12px;margin-bottom:4px">' + a.name + '</div>' +
+        '<div style="font-size:10px;margin-bottom:6px">' + logo + '</div>' +
+        '<div style="background:' + podColors[i] + ';color:#1e293b;font-weight:800;font-size:18px;border-radius:8px 8px 0 0;height:' + podH[i] + 'px;display:flex;flex-direction:column;align-items:center;justify-content:center">' +
+          '<div style="font-size:11px;font-weight:600;opacity:0.7">#' + (i+1) + '</div>' +
+          a._rankScore +
+          '<div style="font-size:9px;font-weight:500;opacity:0.7">of ' + a._maxPossible + '</div>' +
+        '</div></div>';
+    }).join('');
+  }
+
+  // Table
+  const tbody = document.getElementById('rb-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  sorted.forEach((a, idx) => {
+    const rank = idx + 1;
+    const isTop3 = rank <= 3;
+    const podColors = ['#FFD700','#C0C0C0','#CD7F32'];
+    const rankBadge = isTop3 ? '<span style="background:' + podColors[rank-1] + ';color:#1e293b;font-weight:800;padding:2px 8px;border-radius:10px;font-size:11px">' + rank + '</span>' : rank;
+    const logo = storeLogo[a.store] || a.store;
+    const sc = a._rankScore;
+    const scColor = sc >= (a._maxPossible * 0.7) ? 'var(--green)' : sc >= (a._maxPossible * 0.4) ? 'var(--text)' : 'var(--red)';
+    const rp = a._rp;
+
+    // Cell: actual value on top, rank pts below in small text
+    function rpCell(actual, fmt, rpVal) {
+      const pct = rpVal / N;
+      const color = pct >= 0.8 ? '#0f9b58' : pct <= 0.3 ? '#d93025' : '#1e293b';
+      const rpDisp = rpVal % 1 === 0 ? rpVal : rpVal.toFixed(1);
+      return '<td style="text-align:center"><div style="font-weight:600;color:' + color + '">' + fmt(actual) + '</div><div style="font-size:8px;color:#64748b">' + rpDisp + ' pts</div></td>';
+    }
+
+    const fInt = v => v;
+    const f1 = v => (typeof v === 'number' ? v.toFixed(1) : '—');
+    const f2 = v => (typeof v === 'number' ? v.toFixed(2) : '—');
+
+    tbody.innerHTML += '<tr style="' + (isTop3 ? 'background:#fefce8' : '') + '">' +
+      '<td style="text-align:center">' + rankBadge + '</td>' +
+      '<td style="text-align:left;font-weight:600;font-size:11px">' + a.name + '</td>' +
+      '<td style="text-align:center">' + logo + '</td>' +
+      '<td style="text-align:center;font-weight:800;font-size:14px;color:' + scColor + ';background:#1e293b0a;border-radius:4px">' + sc + '<span style="font-size:8px;color:var(--muted);font-weight:400"> /' + a._maxPossible + '</span></td>' +
+      '<td style="text-align:center"><span style="border-radius:4px;padding:3px 8px;font-size:10px;font-weight:700;' + (a.csiPass ? 'background:#dcfce7;color:#16a34a' : 'background:#fee2e2;color:#dc2626') + '">' + (a.csiPass ? '✓ +10%' : '✗') + '</span></td>' +
+      rpCell(a.ro, fInt, rp.ro||0) +
+      rpCell(a.openRo||0, fInt, rp.openRo||0) +
+      rpCell(a.cpHrs||0, f1, rp.cpHrs||0) +
+      rpCell(a.warrHrs||0, f1, rp.warrHrs||0) +
+      rpCell(a.rap||0, f2, rp.rap||0) +
+      rpCell(a._combined||0, fInt, rp._combined||0) +
+      rpCell(a.alignCnt||0, fInt, rp.alignCnt||0) +
+      rpCell(a.tireCnt||0, fInt, rp.tireCnt||0) +
+      rpCell(a.valvCnt||0, fInt, rp.valvCnt||0) +
+    '</tr>';
+  });
+}
+
+// ══════════════════════════════════════════════════════
 // PURSUIT ENTRY
 // ══════════════════════════════════════════════════════
 function buildPursuitEntry() {
@@ -1922,6 +2082,7 @@ function initDashboard() {
   gpRenderTable();
   saRenderTable();
   renderLeaderboard();
+  renderRankBoard();
 
   // Restore display state — only active panel visible
   document.querySelectorAll('.tab-panel').forEach(p => {
@@ -1986,6 +2147,7 @@ window.applyPursuit  = applyPursuit;
 window.toggleAdvisorMgr    = toggleAdvisorMgr;
 window.printTab            = printTab;
 window.toggleCsi           = toggleCsi;
+window.renderRankBoard     = renderRankBoard;
 window.advisorMgrSelectAll = advisorMgrSelectAll;
 window.saveAdvisorSelections = saveAdvisorSelections;
 
@@ -2044,6 +2206,45 @@ window.addEventListener('DOMContentLoaded', initDashboard);
   </div>
 </div>
 
+<!-- ══ TAB: RANK BOARD ══ -->
+<div class="tab-panel" id="tab-rankboard">
+  <div class="panel-header">
+    <div>
+      <div class="panel-title">Advisor Rank Board</div>
+      <div class="panel-sub">Rank-Points System · Each metric ranked 1–N · Best = N pts · CSI +10% Bonus · Tiebreaker: CSI → Total Hrs → Fewest Open ROs → Combined Units</div>
+    </div>
+    <div class="period-badge data-date-badge"></div>
+  </div>
+
+  <div id="rb-podium" style="display:flex;justify-content:center;align-items:flex-end;gap:12px;min-height:140px;margin-bottom:16px"></div>
+
+  <div class="summary-card">
+    <div class="summary-card-header" id="rb-table-header">All Advisors · Rank Point Totals</div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr class="group-row">
+            <th style="width:44px;text-align:center">Rank</th>
+            <th style="text-align:left">Advisor</th>
+            <th>Store</th>
+            <th style="background:#1e293b;color:#fff;border-radius:4px">Rank<br>Score</th>
+            <th style="background:#0f9b58;color:#fff;border-radius:4px;font-size:9px">CSI<br>+10%</th>
+            <th>ROs</th>
+            <th>Open<br>ROs</th>
+            <th>CP<br>Hrs</th>
+            <th>Warr<br>Hrs</th>
+            <th>Hrs/<br>RO</th>
+            <th>TTL<br>Units</th>
+            <th>Align</th>
+            <th>Tires</th>
+            <th>Valv</th>
+          </tr>
+        </thead>
+        <tbody id="rb-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
 
 
 
