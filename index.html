@@ -1924,7 +1924,22 @@ function renderRankBoard() {
     });
   }
 
-  // Table
+  // Disclaimer
+  const disclaimer = document.getElementById('rb-disclaimer');
+  if (disclaimer) {
+    const top20 = Math.ceil(N * 0.8);
+    const bot30 = Math.floor(N * 0.3);
+    disclaimer.innerHTML = '<strong>How it works:</strong> ' + N + ' active advisors ranked across 9 categories. ' +
+      'Each category has a maximum of <strong>' + N + ' pts</strong> (1st place). ' +
+      'Ties share the average of their ranks. ' +
+      'Max possible score: <strong>' + (N * 9) + ' pts</strong> (9 categories \u00D7 ' + N + ' pts). ' +
+      'CSI adds a 10% bonus to the total.' +
+      '<br><span style="color:#0f9b58;font-weight:700">\u25A0</span> Green = Top 20% in category (' + top20 + '\u2013' + N + ' pts) \u00B7 ' +
+      '<span style="color:#d93025;font-weight:700">\u25A0</span> Red = Bottom 30% (1\u2013' + bot30 + ' pts) \u00B7 ' +
+      '<span style="color:#1e293b;font-weight:700">\u25A0</span> Neutral = Middle';
+  }
+
+  // Rank Board Table
   const tbody = document.getElementById('rb-tbody');
   if (!tbody) return;
   tbody.innerHTML = '';
@@ -2228,6 +2243,8 @@ window.addEventListener('DOMContentLoaded', initDashboard);
   </div>
 
   <div id="rb-podium" style="display:flex;align-items:flex-end;justify-content:center;gap:12px;margin-bottom:28px;min-height:160px"></div>
+
+  <div id="rb-disclaimer" style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;padding:10px 16px;margin-bottom:16px;font-size:11px;color:#1e293b;line-height:1.5"></div>
 
   <div class="summary-card">
     <div class="summary-card-header" id="rb-table-header">All Advisors · Rank Point Totals</div>
