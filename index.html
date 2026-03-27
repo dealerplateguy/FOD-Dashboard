@@ -1900,26 +1900,28 @@ function renderRankBoard() {
     return b._combined - a._combined;
   });
 
-  // Podium
+  // Podium — identical to Leaderboard format
   const podium = document.getElementById('rb-podium');
   if (podium) {
     const top3 = sorted.slice(0, 3);
-    const podColors = ['#FFD700', '#C0C0C0', '#CD7F32'];
-    const podH = [120, 100, 85];
-    const podOrder = [1, 0, 2];
-    podium.innerHTML = podOrder.map(i => {
-      if (!top3[i]) return '';
-      const a = top3[i];
-      const logo = storeLogo[a.store] || '';
-      return '<div style="text-align:center;width:140px">' +
-        '<div style="font-weight:700;font-size:12px;margin-bottom:4px">' + a.name + '</div>' +
-        '<div style="font-size:10px;margin-bottom:6px">' + logo + '</div>' +
-        '<div style="background:' + podColors[i] + ';color:#1e293b;font-weight:800;font-size:18px;border-radius:8px 8px 0 0;height:' + podH[i] + 'px;display:flex;flex-direction:column;align-items:center;justify-content:center">' +
-          '<div style="font-size:11px;font-weight:600;opacity:0.7">#' + (i+1) + '</div>' +
-          a._rankScore +
-          '<div style="font-size:9px;font-weight:500;opacity:0.7">of ' + a._maxPossible + '</div>' +
+    const order = top3.length >= 3 ? [top3[1], top3[0], top3[2]] : top3.length === 2 ? [top3[1], top3[0]] : top3;
+    const orderRanks = top3.length >= 3 ? [2,1,3] : top3.length === 2 ? [2,1] : [1];
+    podium.innerHTML = '';
+    order.forEach(function(a, oi) {
+      if (!a) return;
+      const rank = orderRanks[oi];
+      const h = podiumHeights[rank-1];
+      const mc = podiumColors[rank-1];
+      podium.innerHTML += '<div style="display:flex;flex-direction:column;align-items:center;gap:0;flex:1;max-width:180px">' +
+        '<div style="font-size:' + (rank===1?'28px':'22px') + '">' + medals[rank-1] + '</div>' +
+        '<div style="font-weight:700;font-size:' + (rank===1?'13px':'12px') + ';text-align:center;margin:6px 0 2px;color:var(--text)">' + a.name + '</div>' +
+        '<div style="font-size:10px;font-weight:500;margin-bottom:8px">' + (storeLogo[a.store]||a.store) + '</div>' +
+        '<div style="font-family:\'DM Mono\',monospace;font-size:' + (rank===1?'32px':'24px') + ';font-weight:700;color:' + mc + ';line-height:1">' + a._rankScore + '</div>' +
+        '<div style="font-size:9px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px">of ' + a._maxPossible + ' rank pts</div>' +
+        '<div style="width:100%;height:' + h + 'px;background:' + mc + '22;border:2px solid ' + mc + ';border-bottom:none;border-radius:6px 6px 0 0;display:flex;align-items:flex-start;justify-content:center;padding-top:8px">' +
+          '<span style="font-size:' + (rank===1?'20px':'16px') + ';font-weight:800;color:' + mc + '">#' + rank + '</span>' +
         '</div></div>';
-    }).join('');
+    });
   }
 
   // Table
@@ -1927,43 +1929,52 @@ function renderRankBoard() {
   if (!tbody) return;
   tbody.innerHTML = '';
 
+  // Find max rank points per metric for gold medal
+  const metricKeys = ['ro','openRo','cpHrs','warrHrs','rap','_combined','alignCnt','tireCnt','valvCnt'];
+  const maxRP = {};
+  metricKeys.forEach(k => {
+    maxRP[k] = Math.max(...sorted.map(a => a._rp[k] || 0));
+  });
+
   sorted.forEach((a, idx) => {
     const rank = idx + 1;
     const isTop3 = rank <= 3;
-    const podColors = ['#FFD700','#C0C0C0','#CD7F32'];
-    const rankBadge = isTop3 ? '<span style="background:' + podColors[rank-1] + ';color:#1e293b;font-weight:800;padding:2px 8px;border-radius:10px;font-size:11px">' + rank + '</span>' : rank;
+    const rankDisplay = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : '#' + rank;
+    const rowBg = rank === 1 ? 'background:#fffbeb' : rank === 2 ? 'background:#f8fafc' : rank === 3 ? 'background:#fdf8f3' : '';
     const logo = storeLogo[a.store] || a.store;
     const sc = a._rankScore;
     const scColor = sc >= (a._maxPossible * 0.7) ? 'var(--green)' : sc >= (a._maxPossible * 0.4) ? 'var(--text)' : 'var(--red)';
     const rp = a._rp;
+    const safeName = a.name.replace(/'/g, "\\'");
 
-    // Cell: actual value on top, rank pts below in small text
-    function rpCell(actual, fmt, rpVal) {
+    // Cell: actual value + 🥇 if tied for #1 + rank pts below
+    function rpCell(actual, fmt, rpVal, metricKey) {
       const pct = rpVal / N;
       const color = pct >= 0.8 ? '#0f9b58' : pct <= 0.3 ? '#d93025' : '#1e293b';
       const rpDisp = rpVal % 1 === 0 ? rpVal : rpVal.toFixed(1);
-      return '<td style="text-align:center"><div style="font-weight:600;color:' + color + '">' + fmt(actual) + '</div><div style="font-size:8px;color:#64748b">' + rpDisp + ' pts</div></td>';
+      const medal = (rpVal >= maxRP[metricKey] && rpVal > 0) ? ' \uD83E\uDD47' : '';
+      return '<td style="text-align:center"><div style="font-weight:600;color:' + color + '">' + fmt(actual) + medal + '</div><div style="font-size:8px;color:#64748b">' + rpDisp + ' pts</div></td>';
     }
 
-    const fInt = v => v;
-    const f1 = v => (typeof v === 'number' ? v.toFixed(1) : '—');
-    const f2 = v => (typeof v === 'number' ? v.toFixed(2) : '—');
+    var fInt = function(v) { return v; };
+    var f1 = function(v) { return typeof v === 'number' ? v.toFixed(1) : '\u2014'; };
+    var f2 = function(v) { return typeof v === 'number' ? v.toFixed(2) : '\u2014'; };
 
-    tbody.innerHTML += '<tr style="' + (isTop3 ? 'background:#fefce8' : '') + '">' +
-      '<td style="text-align:center">' + rankBadge + '</td>' +
-      '<td style="text-align:left;font-weight:600;font-size:11px">' + a.name + '</td>' +
-      '<td style="text-align:center">' + logo + '</td>' +
+    tbody.innerHTML += '<tr style="' + rowBg + '">' +
+      '<td style="text-align:center;font-size:' + (isTop3?'16px':'12px') + ';font-weight:700;color:var(--text2)">' + rankDisplay + '</td>' +
+      '<td style="text-align:left"><span style="font-weight:600;color:var(--text)">' + a.name + '</span></td>' +
+      '<td style="text-align:center;padding:4px 6px">' + logo + '</td>' +
       '<td style="text-align:center;font-weight:800;font-size:14px;color:' + scColor + ';background:#1e293b0a;border-radius:4px">' + sc + '<span style="font-size:8px;color:var(--muted);font-weight:400"> /' + a._maxPossible + '</span></td>' +
-      '<td style="text-align:center"><span style="border-radius:4px;padding:3px 8px;font-size:10px;font-weight:700;' + (a.csiPass ? 'background:#dcfce7;color:#16a34a' : 'background:#fee2e2;color:#dc2626') + '">' + (a.csiPass ? '✓ +10%' : '✗') + '</span></td>' +
-      rpCell(a.ro, fInt, rp.ro||0) +
-      rpCell(a.openRo||0, fInt, rp.openRo||0) +
-      rpCell(a.cpHrs||0, f1, rp.cpHrs||0) +
-      rpCell(a.warrHrs||0, f1, rp.warrHrs||0) +
-      rpCell(a.rap||0, f2, rp.rap||0) +
-      rpCell(a._combined||0, fInt, rp._combined||0) +
-      rpCell(a.alignCnt||0, fInt, rp.alignCnt||0) +
-      rpCell(a.tireCnt||0, fInt, rp.tireCnt||0) +
-      rpCell(a.valvCnt||0, fInt, rp.valvCnt||0) +
+      '<td style="text-align:center"><button onclick="toggleCsi(\'' + safeName + '\')" style="border:none;border-radius:4px;padding:3px 8px;font-size:10px;font-weight:700;cursor:pointer;' + (a.csiPass ? 'background:#dcfce7;color:#16a34a' : 'background:#fee2e2;color:#dc2626') + '">' + (a.csiPass ? '\u2713 +10%' : '\u2717') + '</button></td>' +
+      rpCell(a.ro, fInt, rp.ro||0, 'ro') +
+      rpCell(a.openRo||0, fInt, rp.openRo||0, 'openRo') +
+      rpCell(a.cpHrs||0, f1, rp.cpHrs||0, 'cpHrs') +
+      rpCell(a.warrHrs||0, f1, rp.warrHrs||0, 'warrHrs') +
+      rpCell(a.rap||0, f2, rp.rap||0, 'rap') +
+      rpCell(a._combined||0, fInt, rp._combined||0, '_combined') +
+      rpCell(a.alignCnt||0, fInt, rp.alignCnt||0, 'alignCnt') +
+      rpCell(a.tireCnt||0, fInt, rp.tireCnt||0, 'tireCnt') +
+      rpCell(a.valvCnt||0, fInt, rp.valvCnt||0, 'valvCnt') +
     '</tr>';
   });
 }
@@ -2216,7 +2227,7 @@ window.addEventListener('DOMContentLoaded', initDashboard);
     <div class="period-badge data-date-badge"></div>
   </div>
 
-  <div id="rb-podium" style="display:flex;justify-content:center;align-items:flex-end;gap:12px;min-height:140px;margin-bottom:16px"></div>
+  <div id="rb-podium" style="display:flex;align-items:flex-end;justify-content:center;gap:12px;margin-bottom:28px;min-height:160px"></div>
 
   <div class="summary-card">
     <div class="summary-card-header" id="rb-table-header">All Advisors · Rank Point Totals</div>
